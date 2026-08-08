@@ -1,0 +1,107 @@
+{
+  "name": "@ayronforge/haversack",
+  "version": "0.1.0",
+  "description": "Ayronforge's Effect toolbox: schemas, utils, errors, email, PostHog, and Brazilian document helpers",
+  "keywords": ["effect", "typescript", "toolbox", "schema", "resend", "posthog"],
+  "homepage": "https://github.com/ayronforge/haversack#readme",
+  "bugs": { "url": "https://github.com/ayronforge/haversack/issues" },
+  "license": "MIT",
+  "author": "Pedro Toledo",
+  "repository": { "type": "git", "url": "https://github.com/ayronforge/haversack.git" },
+  "type": "module",
+  "sideEffects": false,
+  "files": ["dist"],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "engines": { "node": ">=18" },
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./contracts": { "types": "./dist/contracts.d.ts", "import": "./dist/contracts.js" },
+    "./aws": { "types": "./dist/aws.d.ts", "import": "./dist/aws.js" },
+    "./errors": { "types": "./dist/errors.d.ts", "import": "./dist/errors.js" },
+    "./schema": { "types": "./dist/schema.d.ts", "import": "./dist/schema.js" },
+    "./utils": { "types": "./dist/utils.d.ts", "import": "./dist/utils.js" },
+    "./email": { "types": "./dist/email.d.ts", "import": "./dist/email.js" },
+    "./posthog": { "types": "./dist/posthog.d.ts", "import": "./dist/posthog.js" },
+    "./posthog/browser": {
+      "types": "./dist/posthog/browser.d.ts",
+      "import": "./dist/posthog/browser.js"
+    },
+    "./posthog/react": {
+      "types": "./dist/posthog/react.d.ts",
+      "import": "./dist/posthog/react.js"
+    },
+    "./stripe": { "types": "./dist/stripe.d.ts", "import": "./dist/stripe.js" },
+    "./auth/workos": {
+      "types": "./dist/auth/workos.d.ts",
+      "import": "./dist/auth/workos.js"
+    },
+    "./auth/clerk": {
+      "types": "./dist/auth/clerk.d.ts",
+      "import": "./dist/auth/clerk.js"
+    },
+    "./cf": { "types": "./dist/cf.d.ts", "import": "./dist/cf.js" },
+    "./cf/durable-objects": {
+      "types": "./dist/cf/durable-objects.d.ts",
+      "import": "./dist/cf/durable-objects.js"
+    },
+    "./cf/workflow": {
+      "types": "./dist/cf/workflow.d.ts",
+      "import": "./dist/cf/workflow.js"
+    },
+    "./testing": { "types": "./dist/testing.d.ts", "import": "./dist/testing.js" }
+  },
+  "scripts": {
+    "build": "tsdown && bun run scripts/verify-package.ts",
+    "prepublishOnly": "bun run build",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --type-aware ./src",
+    "lint:fix": "oxlint --type-aware --fix ./src",
+    "fmt": "oxfmt ./src",
+    "fmt:check": "oxfmt --check ./src",
+    "check": "bun run lint:fix && bun run fmt",
+    "test": "bun test"
+  },
+  "peerDependencies": {
+    "@clerk/backend": "^3.0.0",
+    "@workos-inc/node": "^10.0.0",
+    "aws4fetch": "^1.0.0",
+    "effect": "4.0.0-beta.106",
+    "libphonenumber-js": "^1.12.0",
+    "posthog-js": ">=1.200.0",
+    "react": ">=18",
+    "react-email": "^6.0.0",
+    "resend": "^6.0.0",
+    "stripe": "^22.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@clerk/backend": { "optional": true },
+    "@workos-inc/node": { "optional": true },
+    "aws4fetch": { "optional": true },
+    "posthog-js": { "optional": true },
+    "react": { "optional": true },
+    "react-email": { "optional": true },
+    "resend": { "optional": true },
+    "stripe": { "optional": true }
+  },
+  "devDependencies": {
+    "@clerk/backend": "3.16.1",
+    "@cloudflare/workers-types": "5.20260808.1",
+    "@types/bun": "^1.3.8",
+    "@types/react": "^19.0.0",
+    "@workos-inc/node": "10.9.0",
+    "aws4fetch": "1.0.20",
+    "stripe": "22.4.0",
+    "effect": "4.0.0-beta.106",
+    "libphonenumber-js": "1.13.10",
+    "oxfmt": "^0.62.0",
+    "oxlint": "^1.77.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "posthog-js": "1.414.0",
+    "react": "19.2.8",
+    "react-email": "6.9.2",
+    "resend": "6.18.1",
+    "tsdown": "^0.22.14",
+    "typescript": "7.0.2"
+  }
+}

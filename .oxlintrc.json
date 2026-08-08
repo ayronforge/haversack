@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "oxc", "unicorn", "promise", "jsdoc"],
+  "categories": { "correctness": "warn" },
+  "rules": {
+    "eslint/no-unused-vars": "error",
+    "eslint/no-console": "off"
+  }
+}
