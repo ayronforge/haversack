@@ -19,8 +19,10 @@ and heavy SDKs (Stripe, Resend, posthog-js, ...) are optional peer
 dependencies: if you never import `/stripe`, you never install Stripe.
 
 ```bash
-bun add @ayronforge/haversack effect
+bun add @ayronforge/haversack effect@beta
 ```
+
+Haversack is built on Effect 4, currently published under the `beta` dist-tag.
 
 ## What's inside
 
