@@ -1,16 +1,40 @@
 # Haversack
 
-An Effect-native toolbox for TypeScript applications. Haversack consolidates
-the services, schemas, and helpers reused across Ayronforge projects into one
-package with independent subpath exports — install once, import only what you
-use, and heavy SDKs stay optional peer dependencies.
+> A haversack is the bag you pack once and carry everywhere.
+
+Every new [Effect](https://effect.website) project starts by rebuilding the
+same things: an email service wrapped around Resend, feature flags that fail
+open, a Stripe client with proper tracing spans, a rate limiter on Durable
+Objects, CPF validation with real check digits. Haversack is that code —
+extracted from production apps, written as idiomatic Effect from end to end,
+and packed into one package so you never write it twice.
+
+**Everything is a typed Effect service.** No loose async functions, no
+untyped errors, no global config. Each capability is a `Context.Service` with
+tagged errors, tracing spans, and a `Layer` you compose like any other —
+config in, service out, test layers included.
+
+**Import only what you use.** Each module is an independent subpath export,
+and heavy SDKs (Stripe, Resend, posthog-js, ...) are optional peer
+dependencies: if you never import `/stripe`, you never install Stripe.
 
 ```bash
 bun add @ayronforge/haversack effect
 ```
 
-Effect is pinned to an exact 4.0 beta. Match the version declared in
-`peerDependencies` — beta releases break APIs between versions.
+## What's inside
+
+| Module | What it gives you |
+|---|---|
+| [`/schema`](#schemas) | Schema building blocks: URLs, slugs, phone numbers, Brazilian documents (CPF, CNPJ, CEP) |
+| [`/email`](#email) | Resend-backed email service with react-email rendering and contact sync |
+| [`/posthog`](#posthog) | Fail-open analytics capture and feature flags — server, browser store, and React bindings |
+| [`/stripe`](#stripe) | Stripe SDK wrapper with per-operation tracing spans and webhook verification |
+| [`/auth/workos`, `/auth/clerk`](#auth) | Auth SDK client layers with redacted config and tagged errors |
+| [`/cf`](#cloudflare) | Workers primitives: rate limiter, distributed lock, queues, Analytics Engine, R2, Workflows adapter |
+| [`/contracts`, `/aws`](#contracts-and-aws) | Vendor-neutral blob storage port with R2 and S3 implementations |
+| [`/testing`](#testing) | Test helpers: service runners, ExecutionContext fakes, SDK stubs |
+| `/errors`, `/utils` | Tagged error primitives, error normalization, and pure helpers |
 
 ## Schemas
 
@@ -193,7 +217,7 @@ Haversack deliberately contains no env-var handling. Use
 [`@ayronforge/envil`](https://github.com/ayronforge/envil) for type-safe
 environment validation and feed the decoded values into the config layers.
 
-## Development
+## Contributing
 
 ```bash
 bun install
@@ -201,5 +225,12 @@ bun run typecheck
 bun test
 bun run build   # bundles with tsdown and smoke-tests every entrypoint
 ```
+
+Issues and pull requests are welcome. If you're adding a new integration,
+follow the house style: every capability is a `Context.Service` with a config
+layer, tagged errors, and tracing spans — and multi-vendor capabilities get a
+port in `/contracts` with one implementation per vendor.
+
+## License
 
 MIT
