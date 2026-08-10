@@ -5,7 +5,6 @@ import {
   BlobPresignError,
   BlobPresigner,
   type BlobPresignPutInput,
-  BlobReadLimitExceeded,
   type BlobReadOptions,
   BlobStorage,
   BlobStorageError,
@@ -13,6 +12,7 @@ import {
   type BlobListOptions,
   type BlobWriteOptions,
 } from "../contracts/blob-storage.ts";
+import { materializeBlobBody } from "../internal/materialize-blob-body.ts";
 import { encodeObjectKey } from "../utils/url.ts";
 
 /** Credentials and target bucket for the S3 REST API. */
@@ -122,33 +122,11 @@ export const S3BlobStorageLive: Layer.Layer<BlobStorage, never, S3Config> = Laye
           if (response.status === 404) return Option.none();
           if (!response.ok) return yield* failStatus("get", key, response);
 
-          const contentLength = readContentLength(response);
-          if (
-            options?.maxBytes !== undefined &&
-            contentLength !== undefined &&
-            contentLength > options.maxBytes
-          ) {
-            yield* Effect.promise(async () => {
-              try {
-                await response.body?.cancel();
-              } catch {
-                // The size limit remains the meaningful failure even if the
-                // runtime cannot cancel an already-open response body.
-              }
-            });
-            return yield* new BlobReadLimitExceeded({
-              key,
-              maxBytes: options.maxBytes,
-              actualBytes: contentLength,
-            });
-          }
-
-          const body = yield* Effect.tryPromise({
-            try: () => readResponseBody(response, key, options?.maxBytes),
-            catch: (cause) =>
-              cause instanceof BlobReadLimitExceeded
-                ? cause
-                : new BlobStorageError({ operation: "get", key, cause }),
+          const body = yield* materializeBlobBody({
+            key,
+            knownSize: readContentLength(response),
+            maxBytes: options?.maxBytes,
+            stream: response.body,
           });
           return Option.some({
             body,
@@ -252,46 +230,4 @@ function readContentLength(response: Response): number | undefined {
 
   const bytes = Number(value);
   return Number.isSafeInteger(bytes) && bytes >= 0 ? bytes : undefined;
-}
-
-async function readResponseBody(
-  response: Response,
-  key: string,
-  maxBytes: number | undefined,
-): Promise<Uint8Array> {
-  if (maxBytes === undefined) return new Uint8Array(await response.arrayBuffer());
-  if (response.body === null) return new Uint8Array();
-
-  const reader = response.body.getReader();
-  const chunks: Array<Uint8Array> = [];
-  let totalBytes = 0;
-
-  try {
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      if (chunk.value === undefined) continue;
-
-      totalBytes += chunk.value.byteLength;
-      if (totalBytes > maxBytes) {
-        try {
-          await reader.cancel();
-        } catch {
-          // The read-limit failure is the actionable result even if cancellation fails.
-        }
-        throw new BlobReadLimitExceeded({ key, maxBytes, actualBytes: totalBytes });
-      }
-      chunks.push(chunk.value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  const body = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return body;
 }

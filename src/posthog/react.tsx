@@ -2,7 +2,7 @@ import { usePostHog } from "@posthog/react";
 import type { ReactNode } from "react";
 import { useMemo, useSyncExternalStore } from "react";
 
-import { makePostHogFeatureFlagSubscription } from "./feature-flag-subscription.ts";
+import { createFeatureFlagStore } from "./feature-flag-store.ts";
 import type { FeatureFlagDefinition } from "./flags.ts";
 
 /** Returns the evaluated flag, or `undefined` while PostHog is loading flags. */
@@ -10,7 +10,7 @@ export function useFeatureFlag(flag: FeatureFlagDefinition): boolean | undefined
   const client = usePostHog();
   const { fallback, key } = flag;
   const store = useMemo(
-    () => makePostHogFeatureFlagSubscription(client, { fallback, key }),
+    () => createFeatureFlagStore(client, { fallback, key }),
     [client, fallback, key],
   );
 

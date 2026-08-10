@@ -121,7 +121,7 @@
     "aws4fetch": "^1.0.0",
     "effect": ">=4.0.0-beta.106 <5",
     "libphonenumber-js": "^1.12.0",
-    "posthog-js": ">=1.257.2",
+    "posthog-js": ">=1.390.2",
     "react": ">=18",
     "react-email": "^6.0.0",
     "resend": "^6.0.0",

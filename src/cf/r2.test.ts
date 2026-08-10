@@ -20,10 +20,16 @@ describe("R2 BlobStorage", () => {
     get: async (key: string) => {
       const stored = objects.get(key);
       if (!stored) return null;
+      const bytes = new TextEncoder().encode(stored.body);
       return {
-        arrayBuffer: async () => new TextEncoder().encode(stored.body).buffer,
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          },
+        }),
         httpMetadata: { contentType: stored.contentType },
-        size: new TextEncoder().encode(stored.body).byteLength,
+        size: bytes.byteLength,
       };
     },
     delete: async (key: string) => {
@@ -67,13 +73,14 @@ describe("R2 BlobStorage", () => {
   });
 
   test("rejects an oversized object before materializing its body", async () => {
-    let arrayBufferReads = 0;
+    let bodyCanceled = false;
     const oversizedBucket = testStub<R2Bucket>({
       get: async () => ({
-        arrayBuffer: async () => {
-          arrayBufferReads += 1;
-          return new Uint8Array(6).buffer;
-        },
+        body: new ReadableStream<Uint8Array>({
+          cancel() {
+            bodyCanceled = true;
+          },
+        }),
         httpMetadata: {},
         size: 6,
       }),
@@ -91,7 +98,7 @@ describe("R2 BlobStorage", () => {
     expect(error).toEqual(
       new BlobReadLimitExceeded({ key: "large.bin", maxBytes: 5, actualBytes: 6 }),
     );
-    expect(arrayBufferReads).toBe(0);
+    expect(bodyCanceled).toBe(true);
   });
 });
 

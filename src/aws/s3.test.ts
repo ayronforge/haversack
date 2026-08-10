@@ -132,14 +132,20 @@ describe("S3 BlobStorage", () => {
   });
 
   test("enforces maxBytes while streaming when Content-Length is absent", async () => {
+    let bodyCanceled = false;
+    let pulls = 0;
     const error = await withFetch(
       (async () =>
         new Response(
           new ReadableStream<Uint8Array>({
-            start(controller) {
-              controller.enqueue(new Uint8Array([1, 2, 3]));
-              controller.enqueue(new Uint8Array([4, 5, 6]));
-              controller.close();
+            pull(controller) {
+              pulls += 1;
+              controller.enqueue(
+                pulls === 1 ? new Uint8Array([1, 2, 3]) : new Uint8Array([4, 5, 6]),
+              );
+            },
+            cancel() {
+              bodyCanceled = true;
             },
           }),
           { status: 200 },
@@ -156,6 +162,7 @@ describe("S3 BlobStorage", () => {
     expect(error).toEqual(
       new BlobReadLimitExceeded({ key: "stream.bin", maxBytes: 5, actualBytes: 6 }),
     );
+    expect(bodyCanceled).toBe(true);
   });
 
   test("propagates BlobStorageError on server errors", async () => {

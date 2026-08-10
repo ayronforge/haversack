@@ -6,7 +6,6 @@ import {
   BlobPresignError,
   BlobPresigner,
   type BlobPresignPutInput,
-  BlobReadLimitExceeded,
   type BlobReadOptions,
   BlobStorage,
   BlobStorageError,
@@ -14,6 +13,7 @@ import {
   type BlobListOptions,
   type BlobWriteOptions,
 } from "../contracts/blob-storage.ts";
+import { materializeBlobBody } from "../internal/materialize-blob-body.ts";
 import { objectUrl } from "../utils/url.ts";
 
 /**
@@ -51,19 +51,13 @@ export function makeR2BlobStorageLayer(bucket: R2Bucket): Layer.Layer<BlobStorag
           const object = yield* tryOperation("get", key, () => bucket.get(key));
           if (!object) return Option.none();
 
-          if (options?.maxBytes !== undefined && object.size > options.maxBytes) {
-            return yield* new BlobReadLimitExceeded({
-              key,
-              maxBytes: options.maxBytes,
-              actualBytes: object.size,
-            });
-          }
-
-          const body = yield* tryOperation(
-            "get",
+          const body = yield* materializeBlobBody({
             key,
-            async () => new Uint8Array(await object.arrayBuffer()),
-          );
+            knownSize: object.size,
+            maxBytes: options?.maxBytes,
+            // SAFETY: workers-types and the DOM lib describe the same Web ReadableStream.
+            stream: object.body as unknown as ReadableStream<Uint8Array>,
+          });
           return Option.some({
             body,
             contentType: object.httpMetadata?.contentType,
