@@ -11,7 +11,7 @@ const checks: Array<[path: string, exportName: string]> = [
   ["../dist/utils.js", "sha256Hex"],
   ["../dist/email.js", "EmailService"],
   ["../dist/posthog.js", "PostHogAnalytics"],
-  ["../dist/posthog/react.js", "FeatureFlagsProvider"],
+  ["../dist/posthog/react.js", "FeatureGate"],
   ["../dist/stripe.js", "StripeClient"],
   ["../dist/auth/workos.js", "WorkosClient"],
   ["../dist/auth/clerk.js", "ClerkClient"],

@@ -117,10 +117,9 @@ const program = Effect.gen(function* () {
 ```
 
 React feature-flag policy lives in `@ayronforge/haversack/posthog/react` and
-composes with the official `@posthog/react` provider. `FeatureFlagsProvider`
-never initializes another SDK client; it adds session-aware loading state,
-typed failure fallbacks, `useFeatureFlag`, and `FeatureGate` with a distinct
-pending state.
+composes directly with the official `@posthog/react` provider. `useFeatureFlag`
+subscribes through `useSyncExternalStore`; `FeatureGate` adds typed fallback and
+pending rendering without owning SDK initialization, capture, or identity.
 
 ## Stripe
 
