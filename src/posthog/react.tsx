@@ -1,99 +1,88 @@
-import { Effect } from "effect";
+import { useFeatureFlagEnabled, usePostHog } from "@posthog/react";
 import type { ReactNode } from "react";
-import { createContext, useCallback, useContext, useEffect, useSyncExternalStore } from "react";
+import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
+import type { FeatureFlagDefinition } from "./flags.ts";
 import type {
-  PostHogClientService,
-  PostHogClientSession,
-  PostHogEventProperties,
-} from "./client.ts";
+  PostHogFeatureFlagError,
+  PostHogFeatureFlagSession,
+  PostHogFeatureFlagStore,
+} from "./react-store.ts";
+import { makePostHogFeatureFlagStore, resolvePostHogFeatureFlag } from "./react-store.ts";
 
-const PostHogClientContext = createContext<PostHogClientService | undefined>(undefined);
+export type {
+  PostHogFeatureFlagError,
+  PostHogFeatureFlagIdentity,
+  PostHogFeatureFlagOperation,
+  PostHogFeatureFlagSession,
+} from "./react-store.ts";
 
-export type PostHogClientProviderProps = {
-  readonly children: ReactNode;
-  readonly client: PostHogClientService;
-};
+const FeatureFlagsContext = createContext<PostHogFeatureFlagStore | undefined>(undefined);
 
-/** Exposes one Haversack PostHog client to React. */
-export function PostHogClientProvider({ children, client }: PostHogClientProviderProps) {
-  return <PostHogClientContext.Provider value={client}>{children}</PostHogClientContext.Provider>;
+function defaultReportError(error: PostHogFeatureFlagError) {
+  console.warn("posthog_feature_flags_failed", { operation: error.operation });
 }
 
-export type PostHogSessionSynchronizerProps = {
-  readonly session: PostHogClientSession;
+/** Props for the Haversack feature-flag policy over the official PostHog provider. */
+export type FeatureFlagsProviderProps = {
+  readonly children: ReactNode;
+  readonly onError?: ((error: PostHogFeatureFlagError) => void) | undefined;
 };
 
-/** Synchronizes capture identity and client feature flags with the current session. */
-export function PostHogSessionSynchronizer({ session }: PostHogSessionSynchronizerProps) {
-  const client = usePostHogClient();
+/** Adds session-aware feature-flag policy without creating or configuring another SDK client. */
+export function FeatureFlagsProvider({ children, onError }: FeatureFlagsProviderProps) {
+  const client = usePostHog();
+  const store = useMemo(
+    () => makePostHogFeatureFlagStore(client, onError ?? defaultReportError),
+    [client, onError],
+  );
+
+  useEffect(() => () => store.dispose(), [store]);
+
+  return <FeatureFlagsContext.Provider value={store}>{children}</FeatureFlagsContext.Provider>;
+}
+
+/** Props for synchronizing an application authentication state with PostHog flags. */
+export type FeatureFlagsSessionSynchronizerProps = {
+  readonly session: PostHogFeatureFlagSession;
+};
+
+/** Synchronizes identity transitions with the SDK supplied by the official PostHog provider. */
+export function FeatureFlagsSessionSynchronizer({ session }: FeatureFlagsSessionSynchronizerProps) {
+  const store = useFeatureFlagStore();
 
   useEffect(() => {
-    const synchronization = client.synchronize(session).pipe(
-      Effect.catchTag("PostHogClientError", (error) =>
-        Effect.logWarning("posthog_client_session_synchronization_failed", {
-          operation: error.operation,
-        }),
-      ),
-    );
-    const interrupt = Effect.runCallback(synchronization);
-    return () => interrupt();
-  }, [client, session]);
+    store.synchronize(session);
+  }, [session, store]);
 
   return null;
 }
 
-/** Returns a stable fail-open event capture callback. */
-export function usePostHogCapture(): (event: string, properties?: PostHogEventProperties) => void {
-  const client = usePostHogClient();
-  return useCallback(
-    (event: string, properties?: PostHogEventProperties) => {
-      Effect.runSync(client.capture(event, properties));
-    },
-    [client],
-  );
+/** Returns the evaluated flag, or `undefined` while the requested identity is loading. */
+export function useFeatureFlag(flag: FeatureFlagDefinition): boolean | undefined {
+  const store = useFeatureFlagStore();
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const evaluated = useFeatureFlagEnabled(flag.key);
+  return resolvePostHogFeatureFlag(snapshot, evaluated, flag);
 }
 
-/** Returns the flag evaluation, or `undefined` while identity is being evaluated. */
-export function useFeatureFlag(key: string): boolean | undefined {
-  const client = usePostHogClient();
-  const snapshot = useSyncExternalStore(
-    client.subscribeFeatureFlags,
-    client.getFeatureFlagSnapshot,
-    client.getFeatureFlagSnapshot,
-  );
-  const flag = client.flags.find((definition) => definition.key === key);
-  if (!flag) return undefined;
-
-  switch (snapshot._tag) {
-    case "Unavailable":
-    case "Failed":
-      return snapshot.values.get(flag.key) ?? flag.fallback;
-    case "Ready":
-      return snapshot.values.get(flag.key) ?? false;
-    case "Anonymous":
-    case "Loading":
-    case "WaitingForIdentity":
-      return undefined;
-  }
-}
-
+/** Props for declarative feature-flag rendering with distinct pending and disabled states. */
 export type FeatureGateProps = {
   readonly children: ReactNode;
-  readonly fallback?: ReactNode;
-  readonly flag: string;
-  readonly pending?: ReactNode;
+  readonly fallback?: ReactNode | undefined;
+  readonly flag: FeatureFlagDefinition;
+  readonly pending?: ReactNode | undefined;
 };
 
-/** Renders `children` only when the flag is enabled. */
+/** Renders children only after the requested flag has resolved as enabled. */
 export function FeatureGate({ children, fallback = null, flag, pending = null }: FeatureGateProps) {
   const enabled = useFeatureFlag(flag);
   if (enabled === undefined) return pending;
   return enabled ? children : fallback;
 }
 
-function usePostHogClient(): PostHogClientService {
-  const client = useContext(PostHogClientContext);
-  if (!client) throw new Error("PostHogClientProvider is missing from the React tree.");
-  return client;
+function useFeatureFlagStore(): PostHogFeatureFlagStore {
+  const store = useContext(FeatureFlagsContext);
+  if (!store) throw new Error("FeatureFlagsProvider is missing from the React tree.");
+  return store;
 }

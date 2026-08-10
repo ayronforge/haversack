@@ -116,12 +116,11 @@ const program = Effect.gen(function* () {
 );
 ```
 
-The browser SDK capability lives in `@ayronforge/haversack/posthog/client`.
-`PostHogClient` initializes one injected `posthog-js` instance and owns
-fail-open capture, identity, and reactive client feature flags. React bindings live in
-`@ayronforge/haversack/posthog/react` (`PostHogClientProvider`,
-`PostHogSessionSynchronizer`, `usePostHogCapture`, `useFeatureFlag`, and
-`FeatureGate`).
+React feature-flag policy lives in `@ayronforge/haversack/posthog/react` and
+composes with the official `@posthog/react` provider. `FeatureFlagsProvider`
+never initializes another SDK client; it adds session-aware loading state,
+typed failure fallbacks, `useFeatureFlag`, and `FeatureGate` with a distinct
+pending state.
 
 ## Stripe
 

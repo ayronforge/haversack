@@ -7,6 +7,7 @@
       "devDependencies": {
         "@clerk/backend": "3.16.1",
         "@cloudflare/workers-types": "5.20260808.1",
+        "@posthog/react": "1.10.2",
         "@types/bun": "^1.3.8",
         "@types/react": "^19.0.0",
         "@workos-inc/node": "10.9.0",
@@ -26,11 +27,12 @@
       },
       "peerDependencies": {
         "@clerk/backend": "^3.0.0",
+        "@posthog/react": ">=1.10.2 <2",
         "@workos-inc/node": "^10.0.0",
         "aws4fetch": "^1.0.0",
         "effect": ">=4.0.0-beta.106 <5",
         "libphonenumber-js": "^1.12.0",
-        "posthog-js": ">=1.200.0",
+        "posthog-js": ">=1.257.2",
         "react": ">=18",
         "react-email": "^6.0.0",
         "resend": "^6.0.0",
@@ -38,6 +40,7 @@
       },
       "optionalPeers": [
         "@clerk/backend",
+        "@posthog/react",
         "@workos-inc/node",
         "aws4fetch",
         "posthog-js",
@@ -238,6 +241,8 @@
     "@posthog/browser-common": ["@posthog/browser-common@0.4.0", "", { "dependencies": { "@posthog/core": "^1.46.8", "@posthog/types": "^1.402.0" } }, "sha512-W9DCGVks15docUMPvJ2nd8NS16Gn74bsGWuaeg31beEKFSjdW8wvnQ1ETY6WSql5pYxZb3GdJmEUZVVstKSrBQ=="],
 
     "@posthog/core": ["@posthog/core@1.46.9", "", { "dependencies": { "@posthog/types": "^1.402.2" } }, "sha512-EXO6y5ih+jBkTCpUCuYgQmajuDZuvy6vMvflkub6pLQyi0GPlCPWVSvZZkOeQw9e2MxoD5GteeGCt9R8+UJ/yQ=="],
+
+    "@posthog/react": ["@posthog/react@1.10.2", "", { "peerDependencies": { "@types/react": ">=16.8.0", "posthog-js": ">=1.257.2", "react": ">=16.8.0" }, "optionalPeers": ["@types/react"] }, "sha512-/KXzUZiSByE9/6fHmnfDVVvld/3pvBuM6KFUuT5NkR4XwOHEAT/EwNwhUUFOOJpsyDa0PaEWWHZS6VY9r2CB3Q=="],
 
     "@posthog/types": ["@posthog/types@1.402.2", "", {}, "sha512-ZZTiS4dLwF4/D0YTzS3gGSLFnhuNOY5yu4d9VGS9trGe5GW6FjIXo20p18K5BPW2RZSYSld8sdnSAY3AUXleUQ=="],
 
