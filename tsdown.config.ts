@@ -16,7 +16,6 @@ export default defineConfig({
     "auth/workos": "src/auth/workos.ts",
     "auth/clerk": "src/auth/clerk.ts",
     cf: "src/cf/index.ts",
-    "cf/durable-objects": "src/cf/durable-objects.ts",
     "cf/workflow": "src/cf/workflow.ts",
     testing: "src/testing/index.ts",
   },

@@ -31,11 +31,4 @@ for (const [path, exportName] of checks) {
   }
 }
 
-// cf/durable-objects imports `cloudflare:workers`, which only exists inside a
-// Worker — assert the artifact exists and kept the import external instead.
-const durableObjects = await Bun.file(new URL("../dist/cf/durable-objects.js", import.meta.url)).text();
-if (!durableObjects.includes('from "cloudflare:workers"')) {
-  throw new Error("dist/cf/durable-objects.js must keep cloudflare:workers as an external import.");
-}
-
-console.log(`verified ${checks.length + 1} entrypoints`);
+console.log(`verified ${checks.length} entrypoints`);

@@ -98,10 +98,6 @@
       "types": "./dist/cf.d.ts",
       "import": "./dist/cf.js"
     },
-    "./cf/durable-objects": {
-      "types": "./dist/cf/durable-objects.d.ts",
-      "import": "./dist/cf/durable-objects.js"
-    },
     "./cf/workflow": {
       "types": "./dist/cf/workflow.d.ts",
       "import": "./dist/cf/workflow.js"

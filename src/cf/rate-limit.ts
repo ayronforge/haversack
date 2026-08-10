@@ -38,9 +38,26 @@ export class RequestRateLimitExceeded extends Data.TaggedError("RequestRateLimit
   readonly retryAfterMs: number;
 }> {}
 
-/** RPC surface of the rate-limit Durable Object, as seen through a namespace binding. */
-export interface RateLimitBucketRpc extends Rpc.DurableObjectBranded {
+/**
+ * RPC surface a caller-owned Durable Object must implement for
+ * {@link RequestRateLimiter}.
+ *
+ * The methods mirror the fixed-window and token-bucket store semantics from
+ * `effect/unstable/persistence`. Implementations own persistence, migrations,
+ * cleanup, and concurrency control.
+ */
+export interface RateLimiterRpc extends Rpc.DurableObjectBranded {
+  /**
+   * Returns the count after consuming `tokens` and the remaining TTL in
+   * milliseconds. When `limit` would be exceeded, return a count greater than
+   * the limit without extending the stored TTL.
+   */
   fixedWindow(input: RateLimitFixedWindowInput): Promise<readonly [count: number, ttl: number]>;
+
+  /**
+   * Returns the remaining token count after consumption. Without overflow, a
+   * negative result reports rejection but must not persist a negative balance.
+   */
   tokenBucket(input: RateLimitTokenBucketInput): Promise<number>;
 }
 
@@ -86,9 +103,12 @@ export class RequestRateLimiter extends Context.Service<
     Layer.provide(EffectRateLimiter.layerStoreMemory),
   );
 
-  /** Durable Object-backed implementation shared across Worker isolates. */
+  /**
+   * Shared implementation backed by a caller-owned Durable Object satisfying
+   * {@link RateLimiterRpc}.
+   */
   static layerDurableObject(
-    namespace: DurableObjectNamespace<RateLimitBucketRpc>,
+    namespace: DurableObjectNamespace<RateLimiterRpc>,
   ): Layer.Layer<RequestRateLimiter> {
     return RequestRateLimiter.layer.pipe(
       Layer.provide(EffectRateLimiter.layer),
@@ -98,15 +118,15 @@ export class RequestRateLimiter extends Context.Service<
 }
 
 function makeDurableObjectStoreLayer(
-  namespace: DurableObjectNamespace<RateLimitBucketRpc>,
+  namespace: DurableObjectNamespace<RateLimiterRpc>,
 ): Layer.Layer<EffectRateLimiter.RateLimiterStore> {
   return Layer.succeed(
     EffectRateLimiter.RateLimiterStore,
     EffectRateLimiter.RateLimiterStore.of({
       fixedWindow: (options) =>
-        callRateLimitBucket(namespace, options.key, async (bucket) => {
+        callRateLimiter(namespace, options.key, async (limiter) => {
           // The RPC boundary widens the tuple to `number[]`; restore its shape.
-          const [count = 0, ttl = 0] = await bucket.fixedWindow({
+          const [count = 0, ttl = 0] = await limiter.fixedWindow({
             limit: options.limit,
             refillRateMs: Duration.toMillis(options.refillRate),
             tokens: options.tokens,
@@ -114,8 +134,8 @@ function makeDurableObjectStoreLayer(
           return [count, ttl] as const;
         }),
       tokenBucket: (options) =>
-        callRateLimitBucket(namespace, options.key, (bucket) =>
-          bucket.tokenBucket({
+        callRateLimiter(namespace, options.key, (limiter) =>
+          limiter.tokenBucket({
             allowOverflow: options.allowOverflow,
             limit: options.limit,
             refillRateMs: Duration.toMillis(options.refillRate),
@@ -138,10 +158,10 @@ function unsupportedAdaptiveOperation(operation: string) {
   );
 }
 
-function callRateLimitBucket<A>(
-  namespace: DurableObjectNamespace<RateLimitBucketRpc>,
+function callRateLimiter<A>(
+  namespace: DurableObjectNamespace<RateLimiterRpc>,
   key: string,
-  call: (bucket: ReturnType<DurableObjectNamespace<RateLimitBucketRpc>["getByName"]>) => Promise<A>,
+  call: (limiter: ReturnType<DurableObjectNamespace<RateLimiterRpc>["getByName"]>) => Promise<A>,
 ) {
   return Effect.tryPromise({
     try: () => call(namespace.getByName(key)),

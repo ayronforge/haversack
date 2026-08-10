@@ -159,10 +159,11 @@ library never reads a global env.
 
 - `RequestRateLimiter` — fixed-window and token-bucket over
   `effect/unstable/persistence`, with `layerMemory` for tests and
-  `layerDurableObject(namespace)` for cross-isolate limits. Fail-open on store
-  failures.
-- `DistributedLock` / `withLock(key, effect)` — a keyed mutex on a Durable
-  Object with TTL leases and `acquireUseRelease` semantics.
+  `layerDurableObject(namespace)` for cross-isolate limits. The namespace points
+  to a caller-owned Durable Object implementing `RateLimiterRpc`; the application
+  owns persistence, migrations and cleanup. Fail-open on store failures.
+- `DistributedLock` / `withLock(key, effect)` — `acquireUseRelease` lifecycle
+  over a caller-owned Durable Object implementing the typed lease RPC contract.
 - `makeQueueClientService(queue)` — queue producer publishing in Cloudflare's
   100-message batches.
 - `AnalyticsEngine` — the Analytics Engine SQL API with Schema-decoded rows.
@@ -173,14 +174,6 @@ library never reads a global env.
   `effect/unstable/workflow` to Cloudflare Workflows: activities map to
   `step.do` with retries, durable deferreds to `sendEvent`/`waitForEvent`,
   durable clocks to `step.sleep`.
-
-The Durable Object classes ship in a separate entrypoint that only loads
-inside a Worker:
-
-```ts
-// worker entry file, referenced by wrangler
-export { LockBucket, RateLimitBucket } from "@ayronforge/haversack/cf/durable-objects";
-```
 
 ## Contracts and AWS
 
