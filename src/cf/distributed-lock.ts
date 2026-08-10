@@ -3,8 +3,15 @@ import { Context, Data, Effect, Layer } from "effect";
 
 const DEFAULT_LOCK_TTL_MS = 15 * 60 * 1_000;
 
-/** RPC surface of the lock Durable Object, as seen through a namespace binding. */
-export interface LockBucketRpc extends Rpc.DurableObjectBranded {
+/**
+ * RPC surface a caller-owned Durable Object must implement for
+ * {@link DistributedLock}.
+ *
+ * `acquire` must wait until the lease is free or expired. `release` must only
+ * release a lease owned by the supplied owner and should otherwise be
+ * idempotent.
+ */
+export interface DistributedLockRpc extends Rpc.DurableObjectBranded {
   acquire(owner: string, ttlMs: number): Promise<void>;
   release(owner: string): Promise<void>;
 }
@@ -34,7 +41,7 @@ export class DistributedLock extends Context.Service<
 >()("@ayronforge/haversack/cf/DistributedLock") {
   /** Builds the lock service from a Durable Object namespace binding. */
   static layer(
-    namespace: DurableObjectNamespace<LockBucketRpc>,
+    namespace: DurableObjectNamespace<DistributedLockRpc>,
     options: DistributedLockLayerOptions = {},
   ): Layer.Layer<DistributedLock> {
     const ttlMs = options.ttlMs ?? DEFAULT_LOCK_TTL_MS;
