@@ -6,12 +6,14 @@ import {
   BlobPresignError,
   BlobPresigner,
   type BlobPresignPutInput,
+  type BlobReadOptions,
   BlobStorage,
   BlobStorageError,
   type BlobBody,
   type BlobListOptions,
   type BlobWriteOptions,
 } from "../contracts/blob-storage.ts";
+import { materializeBlobBody } from "../internal/materialize-blob-body.ts";
 import { objectUrl } from "../utils/url.ts";
 
 /**
@@ -44,12 +46,20 @@ export function makeR2BlobStorageLayer(bucket: R2Bucket): Layer.Layer<BlobStorag
               : undefined,
           );
         }),
-      get: (key: string) =>
-        tryOperation("get", key, async () => {
-          const object = await bucket.get(key);
+      get: (key: string, options?: BlobReadOptions) =>
+        Effect.gen(function* () {
+          const object = yield* tryOperation("get", key, () => bucket.get(key));
           if (!object) return Option.none();
+
+          const body = yield* materializeBlobBody({
+            key,
+            knownSize: object.size,
+            maxBytes: options?.maxBytes,
+            // SAFETY: workers-types and the DOM lib describe the same Web ReadableStream.
+            stream: object.body as unknown as ReadableStream<Uint8Array>,
+          });
           return Option.some({
-            body: new Uint8Array(await object.arrayBuffer()),
+            body,
             contentType: object.httpMetadata?.contentType,
           });
         }),

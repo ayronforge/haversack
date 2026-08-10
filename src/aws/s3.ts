@@ -5,12 +5,14 @@ import {
   BlobPresignError,
   BlobPresigner,
   type BlobPresignPutInput,
+  type BlobReadOptions,
   BlobStorage,
   BlobStorageError,
   type BlobBody,
   type BlobListOptions,
   type BlobWriteOptions,
 } from "../contracts/blob-storage.ts";
+import { materializeBlobBody } from "../internal/materialize-blob-body.ts";
 import { encodeObjectKey } from "../utils/url.ts";
 
 /** Credentials and target bucket for the S3 REST API. */
@@ -114,14 +116,17 @@ export const S3BlobStorageLive: Layer.Layer<BlobStorage, never, S3Config> = Laye
           });
           if (!response.ok) return yield* failStatus("put", key, response);
         }),
-      get: (key: string) =>
+      get: (key: string, options?: BlobReadOptions) =>
         Effect.gen(function* () {
           const response = yield* signedFetch("get", key, s3.objectUrl(key), { method: "GET" });
           if (response.status === 404) return Option.none();
           if (!response.ok) return yield* failStatus("get", key, response);
-          const body = yield* Effect.tryPromise({
-            try: async () => new Uint8Array(await response.arrayBuffer()),
-            catch: (cause) => new BlobStorageError({ operation: "get", key, cause }),
+
+          const body = yield* materializeBlobBody({
+            key,
+            knownSize: readContentLength(response),
+            maxBytes: options?.maxBytes,
+            stream: response.body,
           });
           return Option.some({
             body,
@@ -217,4 +222,12 @@ function decodeXmlEntities(value: string): string {
     .replaceAll("&gt;", ">")
     .replaceAll("&quot;", '"')
     .replaceAll("&apos;", "'");
+}
+
+function readContentLength(response: Response): number | undefined {
+  const value = response.headers.get("content-length");
+  if (value === null) return undefined;
+
+  const bytes = Number(value);
+  return Number.isSafeInteger(bytes) && bytes >= 0 ? bytes : undefined;
 }

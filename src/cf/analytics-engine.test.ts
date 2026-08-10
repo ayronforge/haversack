@@ -54,13 +54,27 @@ describe("AnalyticsEngine", () => {
     ]);
   });
 
-  test("treats a not-yet-created dataset as empty", async () => {
-    const rows = await withFetch(
+  test("returns a typed response failure without inferring response semantics", async () => {
+    const error = await withFetch(
       (async () => new Response("Unknown table events", { status: 404 })) as typeof fetch,
-      () => query("SELECT count, name FROM events"),
+      () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const analytics = yield* AnalyticsEngine;
+            return yield* Effect.flip(
+              analytics.query(
+                "SELECT count, name FROM events",
+                Schema.Struct({ count: Schema.Number, name: Schema.String }),
+              ),
+            );
+          }).pipe(Effect.provide(configured)),
+        ),
     );
 
-    expect(rows).toEqual([]);
+    expect(error._tag).toBe("AnalyticsEngineQueryError");
+    expect(error.operation).toBe("response");
+    expect(error.status).toBe(404);
+    expect(error.detail).toBe("Unknown table events");
   });
 
   test("rejects rows that do not match the supplied schema", async () => {

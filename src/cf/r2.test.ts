@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { R2Bucket } from "@cloudflare/workers-types";
 import { Effect, Option, Redacted } from "effect";
 
-import { BlobPresigner, BlobStorage } from "../contracts/blob-storage.ts";
+import { BlobPresigner, BlobReadLimitExceeded, BlobStorage } from "../contracts/blob-storage.ts";
 import { testStub } from "../testing/test-stub.ts";
 import { makeR2BlobStorageLayer, R2BlobPresignerLive, R2PresignerConfig } from "./r2.ts";
 
@@ -20,9 +20,16 @@ describe("R2 BlobStorage", () => {
     get: async (key: string) => {
       const stored = objects.get(key);
       if (!stored) return null;
+      const bytes = new TextEncoder().encode(stored.body);
       return {
-        arrayBuffer: async () => new TextEncoder().encode(stored.body).buffer,
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          },
+        }),
         httpMetadata: { contentType: stored.contentType },
+        size: bytes.byteLength,
       };
     },
     delete: async (key: string) => {
@@ -50,7 +57,7 @@ describe("R2 BlobStorage", () => {
         expect(yield* storage.exists("docs/a.txt")).toBe(true);
         expect(yield* storage.exists("missing")).toBe(false);
 
-        const object = yield* storage.get("docs/a.txt");
+        const object = yield* storage.get("docs/a.txt", { maxBytes: 5 });
         expect(Option.isSome(object)).toBe(true);
         if (Option.isSome(object)) {
           expect(new TextDecoder().decode(object.value.body)).toBe("hello");
@@ -63,6 +70,35 @@ describe("R2 BlobStorage", () => {
         expect(Option.isNone(yield* storage.get("docs/a.txt"))).toBe(true);
       }),
     );
+  });
+
+  test("rejects an oversized object before materializing its body", async () => {
+    let bodyCanceled = false;
+    const oversizedBucket = testStub<R2Bucket>({
+      get: async () => ({
+        body: new ReadableStream<Uint8Array>({
+          cancel() {
+            bodyCanceled = true;
+          },
+        }),
+        httpMetadata: {},
+        size: 6,
+      }),
+    });
+
+    const error = await Effect.runPromise(
+      Effect.gen(function* () {
+        const storage = yield* BlobStorage;
+        return yield* Effect.flip(storage.get("large.bin", { maxBytes: 5 }));
+      }).pipe(
+        Effect.provide(makeR2BlobStorageLayer(oversizedBucket)),
+      ) as Effect.Effect<BlobReadLimitExceeded>,
+    );
+
+    expect(error).toEqual(
+      new BlobReadLimitExceeded({ key: "large.bin", maxBytes: 5, actualBytes: 6 }),
+    );
+    expect(bodyCanceled).toBe(true);
   });
 });
 
