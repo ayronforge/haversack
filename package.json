@@ -1,6 +1,6 @@
 {
   "name": "@ayronforge/haversack",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Effect-native toolbox for TypeScript: schemas with Brazilian documents, email via Resend, PostHog analytics and feature flags, Stripe, WorkOS/Clerk auth, Cloudflare Workers primitives, and S3-compatible blob storage — every capability a typed Effect service",
   "keywords": [
     "effect",
