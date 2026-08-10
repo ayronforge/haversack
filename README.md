@@ -30,7 +30,7 @@ Haversack is built on Effect 4, currently published under the `beta` dist-tag.
 |---|---|
 | [`/schema`](#schemas) | Schema building blocks: URLs, slugs, phone numbers, Brazilian documents (CPF, CNPJ, CEP) |
 | [`/email`](#email) | Resend-backed email service with react-email rendering and contact sync |
-| [`/posthog`](#posthog) | Fail-open analytics capture and feature flags — server, client SDK, and React bindings |
+| [`/posthog`](#posthog) | Fail-open server analytics and flags, plus typed React flag policy over the official PostHog provider |
 | [`/stripe`](#stripe) | Stripe SDK wrapper with per-operation tracing spans and webhook verification |
 | [`/auth/workos`, `/auth/clerk`](#auth) | Auth SDK client layers with redacted config and tagged errors |
 | [`/cf`](#cloudflare) | Workers primitives: rate limiter, distributed lock, queues, Analytics Engine, R2, Workflows adapter |
@@ -87,11 +87,9 @@ const program = Effect.gen(function* () {
 
 ## PostHog
 
-Server-side capture and feature flags over fetch (no SDK, works in Workers),
-plus a client SDK service, a store compatible with `useSyncExternalStore`, and
-React bindings.
-Everything is fail-open: delivery and evaluation failures log and fall back,
-they never break a request.
+Server-side capture and feature flags run over fetch without an SDK and work in
+Workers. Server delivery and evaluation are fail-open: failures log and fall
+back rather than break a request.
 
 ```ts
 import { Effect, Layer, Redacted } from "effect";
