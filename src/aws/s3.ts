@@ -5,6 +5,8 @@ import {
   BlobPresignError,
   BlobPresigner,
   type BlobPresignPutInput,
+  BlobReadLimitExceeded,
+  type BlobReadOptions,
   BlobStorage,
   BlobStorageError,
   type BlobBody,
@@ -114,14 +116,31 @@ export const S3BlobStorageLive: Layer.Layer<BlobStorage, never, S3Config> = Laye
           });
           if (!response.ok) return yield* failStatus("put", key, response);
         }),
-      get: (key: string) =>
+      get: (key: string, options?: BlobReadOptions) =>
         Effect.gen(function* () {
           const response = yield* signedFetch("get", key, s3.objectUrl(key), { method: "GET" });
           if (response.status === 404) return Option.none();
           if (!response.ok) return yield* failStatus("get", key, response);
+
+          const contentLength = readContentLength(response);
+          if (
+            options?.maxBytes !== undefined &&
+            contentLength !== undefined &&
+            contentLength > options.maxBytes
+          ) {
+            return yield* new BlobReadLimitExceeded({
+              key,
+              maxBytes: options.maxBytes,
+              actualBytes: contentLength,
+            });
+          }
+
           const body = yield* Effect.tryPromise({
-            try: async () => new Uint8Array(await response.arrayBuffer()),
-            catch: (cause) => new BlobStorageError({ operation: "get", key, cause }),
+            try: () => readResponseBody(response, key, options?.maxBytes),
+            catch: (cause) =>
+              cause instanceof BlobReadLimitExceeded
+                ? cause
+                : new BlobStorageError({ operation: "get", key, cause }),
           });
           return Option.some({
             body,
@@ -217,4 +236,54 @@ function decodeXmlEntities(value: string): string {
     .replaceAll("&gt;", ">")
     .replaceAll("&quot;", '"')
     .replaceAll("&apos;", "'");
+}
+
+function readContentLength(response: Response): number | undefined {
+  const value = response.headers.get("content-length");
+  if (value === null) return undefined;
+
+  const bytes = Number(value);
+  return Number.isSafeInteger(bytes) && bytes >= 0 ? bytes : undefined;
+}
+
+async function readResponseBody(
+  response: Response,
+  key: string,
+  maxBytes: number | undefined,
+): Promise<Uint8Array> {
+  if (maxBytes === undefined) return new Uint8Array(await response.arrayBuffer());
+  if (response.body === null) return new Uint8Array();
+
+  const reader = response.body.getReader();
+  const chunks: Array<Uint8Array> = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      if (chunk.value === undefined) continue;
+
+      totalBytes += chunk.value.byteLength;
+      if (totalBytes > maxBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          // The read-limit failure is the actionable result even if cancellation fails.
+        }
+        throw new BlobReadLimitExceeded({ key, maxBytes, actualBytes: totalBytes });
+      }
+      chunks.push(chunk.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
 }

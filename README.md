@@ -30,7 +30,7 @@ Haversack is built on Effect 4, currently published under the `beta` dist-tag.
 |---|---|
 | [`/schema`](#schemas) | Schema building blocks: URLs, slugs, phone numbers, Brazilian documents (CPF, CNPJ, CEP) |
 | [`/email`](#email) | Resend-backed email service with react-email rendering and contact sync |
-| [`/posthog`](#posthog) | Fail-open analytics capture and feature flags — server, browser store, and React bindings |
+| [`/posthog`](#posthog) | Fail-open analytics capture and feature flags — server, client SDK, and React bindings |
 | [`/stripe`](#stripe) | Stripe SDK wrapper with per-operation tracing spans and webhook verification |
 | [`/auth/workos`, `/auth/clerk`](#auth) | Auth SDK client layers with redacted config and tagged errors |
 | [`/cf`](#cloudflare) | Workers primitives: rate limiter, distributed lock, queues, Analytics Engine, R2, Workflows adapter |
@@ -88,7 +88,8 @@ const program = Effect.gen(function* () {
 ## PostHog
 
 Server-side capture and feature flags over fetch (no SDK, works in Workers),
-plus a browser store compatible with `useSyncExternalStore` and React bindings.
+plus a client SDK service, a store compatible with `useSyncExternalStore`, and
+React bindings.
 Everything is fail-open: delivery and evaluation failures log and fall back,
 they never break a request.
 
@@ -115,9 +116,12 @@ const program = Effect.gen(function* () {
 );
 ```
 
-React bindings live in `@ayronforge/haversack/posthog/react`
-(`FeatureFlagsProvider`, `useFeatureFlag`, `FeatureGate`) over the browser
-store in `@ayronforge/haversack/posthog/browser`.
+The browser SDK capability lives in `@ayronforge/haversack/posthog/client`.
+`PostHogClient` initializes one injected `posthog-js` instance shared by
+fail-open capture, identity, and `ClientFeatureFlags`. React bindings live in
+`@ayronforge/haversack/posthog/react` (`PostHogClientProvider`,
+`PostHogSessionSynchronizer`, `usePostHogCapture`, `useFeatureFlag`, and
+`FeatureGate`).
 
 ## Stripe
 
@@ -166,7 +170,9 @@ library never reads a global env.
   over a caller-owned Durable Object implementing the typed lease RPC contract.
 - `makeQueueClientService(queue)` — queue producer publishing in Cloudflare's
   100-message batches.
-- `AnalyticsEngine` — the Analytics Engine SQL API with Schema-decoded rows.
+- `AnalyticsEngine` — the strict Analytics Engine SQL API with Schema-decoded
+  rows. `isAnalyticsEngineDatasetMissing(error, dataset)` lets callers opt into
+  a missing-dataset fallback without hiding unrelated SQL errors.
 - `makeR2BlobStorageLayer(bucket)` / `R2BlobPresignerLive` — the blob storage
   contract over R2 (see Contracts below).
 - `@ayronforge/haversack/cf/workflow` —
@@ -190,6 +196,7 @@ import { S3BlobStorageLive, S3Config } from "@ayronforge/haversack/aws";
 const program = Effect.gen(function* () {
   const storage = yield* BlobStorage;
   yield* storage.put("reports/q3.pdf", bytes, { contentType: "application/pdf" });
+  const report = yield* storage.get("reports/q3.pdf", { maxBytes: 10_000_000 });
 });
 
 // In a Worker:  Effect.provide(program, makeR2BlobStorageLayer(env.BUCKET))

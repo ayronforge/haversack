@@ -23,10 +23,37 @@ export class AnalyticsEngineConfig extends Context.Service<
 
 /** Expected query, transport, response, or row-decoding failure. */
 export class AnalyticsEngineQueryError extends Data.TaggedError("AnalyticsEngineQueryError")<{
-  readonly cause: unknown;
+  readonly cause?: unknown | undefined;
+  readonly detail?: string | undefined;
   readonly operation: "fetch" | "response" | "rows";
   readonly status?: number | undefined;
 }> {}
+
+/**
+ * Classifies a Cloudflare SQL response as a missing-dataset failure for the
+ * caller-supplied dataset. Query execution itself remains strict so an
+ * unrelated table typo cannot silently become an empty result.
+ */
+export function isAnalyticsEngineDatasetMissing(
+  error: AnalyticsEngineQueryError,
+  expectedDataset: string,
+): boolean {
+  if (error.operation !== "response" || error.status === undefined) return false;
+  if (error.status < 400 || error.status >= 500) return false;
+
+  const dataset = expectedDataset.trim().toLowerCase();
+  if (!dataset) return false;
+
+  const detail = error.detail?.toLowerCase();
+  if (!detail || !containsIdentifier(detail, dataset)) return false;
+
+  return (
+    detail.includes("does not exist") ||
+    detail.includes("doesn't exist") ||
+    detail.includes("unknown table") ||
+    detail.includes("no such table")
+  );
+}
 
 /** Schema-decoding SQL client for Workers Analytics Engine. */
 export class AnalyticsEngine extends Context.Service<
@@ -68,10 +95,8 @@ export class AnalyticsEngine extends Context.Service<
                 }),
             });
 
-            if (isMissingDataset(response.status, detail)) return [];
-
             return yield* new AnalyticsEngineQueryError({
-              cause: detail.slice(0, 512),
+              detail: detail.slice(0, 512),
               operation: "response",
               status: response.status,
             });
@@ -111,14 +136,15 @@ export class AnalyticsEngine extends Context.Service<
   );
 }
 
-function isMissingDataset(status: number, detail: string): boolean {
-  if (status < 400 || status >= 500) return false;
-
-  const message = detail.toLowerCase();
-  return (
-    message.includes("does not exist") ||
-    message.includes("doesn't exist") ||
-    message.includes("unknown table") ||
-    message.includes("no such table")
-  );
+function containsIdentifier(detail: string, identifier: string): boolean {
+  let offset = detail.indexOf(identifier);
+  while (offset !== -1) {
+    const before = detail[offset - 1];
+    const after = detail[offset + identifier.length];
+    const isIdentifierCharacter = (character: string | undefined) =>
+      character !== undefined && /[a-z0-9_]/.test(character);
+    if (!isIdentifierCharacter(before) && !isIdentifierCharacter(after)) return true;
+    offset = detail.indexOf(identifier, offset + identifier.length);
+  }
+  return false;
 }

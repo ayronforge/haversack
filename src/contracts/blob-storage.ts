@@ -13,6 +13,12 @@ export type BlobWriteOptions = {
   readonly contentType?: string | undefined;
 };
 
+/** Options controlling how an object body is materialized. */
+export type BlobReadOptions = {
+  /** Maximum body size accepted in memory. */
+  readonly maxBytes?: number | undefined;
+};
+
 export type BlobListOptions = {
   readonly prefix?: string | undefined;
   readonly limit?: number | undefined;
@@ -23,6 +29,13 @@ export class BlobStorageError extends Data.TaggedError("BlobStorageError")<{
   readonly operation: "put" | "get" | "delete" | "exists" | "list";
   readonly key?: string | undefined;
   readonly cause: unknown;
+}> {}
+
+/** A blob body exceeded the caller's in-memory read limit. */
+export class BlobReadLimitExceeded extends Data.TaggedError("BlobReadLimitExceeded")<{
+  readonly key: string;
+  readonly maxBytes: number;
+  readonly actualBytes?: number | undefined;
 }> {}
 
 /**
@@ -39,7 +52,10 @@ export class BlobStorage extends Context.Service<
       body: BlobBody,
       options?: BlobWriteOptions,
     ) => Effect.Effect<void, BlobStorageError>;
-    readonly get: (key: string) => Effect.Effect<Option.Option<BlobObject>, BlobStorageError>;
+    readonly get: (
+      key: string,
+      options?: BlobReadOptions,
+    ) => Effect.Effect<Option.Option<BlobObject>, BlobStorageError | BlobReadLimitExceeded>;
     readonly delete: (key: string) => Effect.Effect<void, BlobStorageError>;
     readonly exists: (key: string) => Effect.Effect<boolean, BlobStorageError>;
     /** Lists object keys, optionally under a prefix. */

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect, Option, Redacted } from "effect";
 
-import { BlobPresigner, BlobStorage } from "../contracts/blob-storage.ts";
+import { BlobPresigner, BlobReadLimitExceeded, BlobStorage } from "../contracts/blob-storage.ts";
 import { S3BlobPresignerLive, S3BlobStorageLive, S3Config } from "./s3.ts";
 
 const testConfig = S3Config.layer({
@@ -99,6 +99,54 @@ describe("S3 BlobStorage", () => {
         ),
     );
     expect(keys).toEqual(["a.txt", "dir/b & c.txt"]);
+  });
+
+  test("rejects an oversized body from Content-Length", async () => {
+    const error = await withFetch(
+      (async () =>
+        new Response("content", {
+          status: 200,
+          headers: { "Content-Length": "7" },
+        })) as typeof fetch,
+      () =>
+        run(
+          Effect.gen(function* () {
+            const storage = yield* BlobStorage;
+            return yield* Effect.flip(storage.get("large.txt", { maxBytes: 6 }));
+          }),
+        ),
+    );
+
+    expect(error).toEqual(
+      new BlobReadLimitExceeded({ key: "large.txt", maxBytes: 6, actualBytes: 7 }),
+    );
+  });
+
+  test("enforces maxBytes while streaming when Content-Length is absent", async () => {
+    const error = await withFetch(
+      (async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new Uint8Array([1, 2, 3]));
+              controller.enqueue(new Uint8Array([4, 5, 6]));
+              controller.close();
+            },
+          }),
+          { status: 200 },
+        )) as typeof fetch,
+      () =>
+        run(
+          Effect.gen(function* () {
+            const storage = yield* BlobStorage;
+            return yield* Effect.flip(storage.get("stream.bin", { maxBytes: 5 }));
+          }),
+        ),
+    );
+
+    expect(error).toEqual(
+      new BlobReadLimitExceeded({ key: "stream.bin", maxBytes: 5, actualBytes: 6 }),
+    );
   });
 
   test("propagates BlobStorageError on server errors", async () => {

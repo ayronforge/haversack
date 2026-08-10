@@ -10,7 +10,7 @@ export default defineConfig({
     utils: "src/utils/index.ts",
     email: "src/email/index.ts",
     posthog: "src/posthog/index.ts",
-    "posthog/browser": "src/posthog/browser.ts",
+    "posthog/client": "src/posthog/client.ts",
     "posthog/react": "src/posthog/react.tsx",
     stripe: "src/stripe/index.ts",
     "auth/workos": "src/auth/workos.ts",

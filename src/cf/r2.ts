@@ -6,6 +6,8 @@ import {
   BlobPresignError,
   BlobPresigner,
   type BlobPresignPutInput,
+  BlobReadLimitExceeded,
+  type BlobReadOptions,
   BlobStorage,
   BlobStorageError,
   type BlobBody,
@@ -44,12 +46,26 @@ export function makeR2BlobStorageLayer(bucket: R2Bucket): Layer.Layer<BlobStorag
               : undefined,
           );
         }),
-      get: (key: string) =>
-        tryOperation("get", key, async () => {
-          const object = await bucket.get(key);
+      get: (key: string, options?: BlobReadOptions) =>
+        Effect.gen(function* () {
+          const object = yield* tryOperation("get", key, () => bucket.get(key));
           if (!object) return Option.none();
+
+          if (options?.maxBytes !== undefined && object.size > options.maxBytes) {
+            return yield* new BlobReadLimitExceeded({
+              key,
+              maxBytes: options.maxBytes,
+              actualBytes: object.size,
+            });
+          }
+
+          const body = yield* tryOperation(
+            "get",
+            key,
+            async () => new Uint8Array(await object.arrayBuffer()),
+          );
           return Option.some({
-            body: new Uint8Array(await object.arrayBuffer()),
+            body,
             contentType: object.httpMetadata?.contentType,
           });
         }),

@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect, Layer, Redacted, Schema } from "effect";
 
-import { AnalyticsEngine, AnalyticsEngineConfig } from "./analytics-engine.ts";
+import {
+  AnalyticsEngine,
+  AnalyticsEngineConfig,
+  AnalyticsEngineQueryError,
+  isAnalyticsEngineDatasetMissing,
+} from "./analytics-engine.ts";
 
 const configured = AnalyticsEngine.layer.pipe(
   Layer.provide(
@@ -54,13 +59,39 @@ describe("AnalyticsEngine", () => {
     ]);
   });
 
-  test("treats a not-yet-created dataset as empty", async () => {
-    const rows = await withFetch(
+  test("returns a typed response failure for a missing dataset", async () => {
+    const error = await withFetch(
       (async () => new Response("Unknown table events", { status: 404 })) as typeof fetch,
-      () => query("SELECT count, name FROM events"),
+      () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const analytics = yield* AnalyticsEngine;
+            return yield* Effect.flip(
+              analytics.query(
+                "SELECT count, name FROM events",
+                Schema.Struct({ count: Schema.Number, name: Schema.String }),
+              ),
+            );
+          }).pipe(Effect.provide(configured)),
+        ),
     );
 
-    expect(rows).toEqual([]);
+    expect(error._tag).toBe("AnalyticsEngineQueryError");
+    expect(error.operation).toBe("response");
+    expect(error.status).toBe(404);
+    expect(error.detail).toBe("Unknown table events");
+    expect(isAnalyticsEngineDatasetMissing(error, "events")).toBe(true);
+    expect(isAnalyticsEngineDatasetMissing(error, "eventz")).toBe(false);
+    expect(
+      isAnalyticsEngineDatasetMissing(
+        new AnalyticsEngineQueryError({
+          detail: "Unknown table events_archive",
+          operation: "response",
+          status: 404,
+        }),
+        "events",
+      ),
+    ).toBe(false);
   });
 
   test("rejects rows that do not match the supplied schema", async () => {

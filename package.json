@@ -1,6 +1,6 @@
 {
   "name": "@ayronforge/haversack",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Effect-native toolbox for TypeScript: schemas with Brazilian documents, email via Resend, PostHog analytics and feature flags, Stripe, WorkOS/Clerk auth, Cloudflare Workers primitives, and S3-compatible blob storage — every capability a typed Effect service",
   "keywords": [
     "effect",
@@ -74,9 +74,9 @@
       "types": "./dist/posthog.d.ts",
       "import": "./dist/posthog.js"
     },
-    "./posthog/browser": {
-      "types": "./dist/posthog/browser.d.ts",
-      "import": "./dist/posthog/browser.js"
+    "./posthog/client": {
+      "types": "./dist/posthog/client.d.ts",
+      "import": "./dist/posthog/client.js"
     },
     "./posthog/react": {
       "types": "./dist/posthog/react.d.ts",
