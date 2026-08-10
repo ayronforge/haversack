@@ -29,32 +29,6 @@ export class AnalyticsEngineQueryError extends Data.TaggedError("AnalyticsEngine
   readonly status?: number | undefined;
 }> {}
 
-/**
- * Classifies a Cloudflare SQL response as a missing-dataset failure for the
- * caller-supplied dataset. Query execution itself remains strict so an
- * unrelated table typo cannot silently become an empty result.
- */
-export function isAnalyticsEngineDatasetMissing(
-  error: AnalyticsEngineQueryError,
-  expectedDataset: string,
-): boolean {
-  if (error.operation !== "response" || error.status === undefined) return false;
-  if (error.status < 400 || error.status >= 500) return false;
-
-  const dataset = expectedDataset.trim().toLowerCase();
-  if (!dataset) return false;
-
-  const detail = error.detail?.toLowerCase();
-  if (!detail || !containsIdentifier(detail, dataset)) return false;
-
-  return (
-    detail.includes("does not exist") ||
-    detail.includes("doesn't exist") ||
-    detail.includes("unknown table") ||
-    detail.includes("no such table")
-  );
-}
-
 /** Schema-decoding SQL client for Workers Analytics Engine. */
 export class AnalyticsEngine extends Context.Service<
   AnalyticsEngine,
@@ -134,17 +108,4 @@ export class AnalyticsEngine extends Context.Service<
       return AnalyticsEngine.of({ query });
     }),
   );
-}
-
-function containsIdentifier(detail: string, identifier: string): boolean {
-  let offset = detail.indexOf(identifier);
-  while (offset !== -1) {
-    const before = detail[offset - 1];
-    const after = detail[offset + identifier.length];
-    const isIdentifierCharacter = (character: string | undefined) =>
-      character !== undefined && /[a-z0-9_]/.test(character);
-    if (!isIdentifierCharacter(before) && !isIdentifierCharacter(after)) return true;
-    offset = detail.indexOf(identifier, offset + identifier.length);
-  }
-  return false;
 }

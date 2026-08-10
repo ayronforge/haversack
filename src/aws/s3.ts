@@ -128,6 +128,14 @@ export const S3BlobStorageLive: Layer.Layer<BlobStorage, never, S3Config> = Laye
             contentLength !== undefined &&
             contentLength > options.maxBytes
           ) {
+            yield* Effect.promise(async () => {
+              try {
+                await response.body?.cancel();
+              } catch {
+                // The size limit remains the meaningful failure even if the
+                // runtime cannot cancel an already-open response body.
+              }
+            });
             return yield* new BlobReadLimitExceeded({
               key,
               maxBytes: options.maxBytes,

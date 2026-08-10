@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 
-import { ClientFeatureFlags, PostHogClient, type PostHogClientSdk } from "./client.ts";
+import { PostHogClient, type PostHogClientSdk } from "./client.ts";
 
 type FakePostHog = {
   readonly sdk: PostHogClientSdk;
@@ -75,33 +75,33 @@ const makeFakePostHog = (options?: { readonly captureFails?: boolean }): FakePos
 describe("PostHogClient", () => {
   test("shares one initialized SDK across capture, identity, and feature flags", async () => {
     const fake = makeFakePostHog();
-    const clientLayer = PostHogClient.layer({
+    const layer = PostHogClient.layer({
       apiHost: "/ingest",
       client: fake.sdk,
-      projectToken: "project_token",
-    });
-    const layer = ClientFeatureFlags.layer({
       flags: [
         { key: "new-checkout", fallback: false },
         { key: "missing", fallback: true },
       ],
-    }).pipe(Layer.provideMerge(clientLayer));
+      projectToken: "project_token",
+    });
 
     await Effect.runPromise(
       Effect.gen(function* () {
         const client = yield* PostHogClient;
-        const flags = yield* ClientFeatureFlags;
 
         yield* client.capture("checkout_opened", { source: "pricing" });
-        yield* flags.synchronize({
+        yield* client.synchronize({
           _tag: "Authenticated",
           identity: { distinctId: "user_123", personProperties: { plan: "pro" } },
         });
 
-        expect(flags.getSnapshot()).toEqual({ _tag: "Loading", distinctId: "user_123" });
+        expect(client.getFeatureFlagSnapshot()).toEqual({
+          _tag: "Loading",
+          distinctId: "user_123",
+        });
         yield* Effect.sync(() => fake.emitFlags());
 
-        const snapshot = flags.getSnapshot();
+        const snapshot = client.getFeatureFlagSnapshot();
         expect(snapshot._tag).toBe("Ready");
         if (snapshot._tag === "Ready") {
           expect(snapshot.distinctId).toBe("user_123");
@@ -109,8 +109,8 @@ describe("PostHogClient", () => {
           expect(snapshot.values.get("missing")).toBe(false);
         }
 
-        yield* flags.synchronize({ _tag: "Anonymous" });
-        expect(flags.getSnapshot()).toEqual({ _tag: "Anonymous" });
+        yield* client.synchronize({ _tag: "Anonymous" });
+        expect(client.getFeatureFlagSnapshot()).toEqual({ _tag: "Anonymous" });
       }).pipe(Effect.provide(layer)),
     );
 
@@ -144,25 +144,51 @@ describe("PostHogClient", () => {
     expect(fake.captures).toEqual([]);
   });
 
-  test("uses static fallbacks when no project token is configured", async () => {
+  test("synchronizes identity without requiring a feature-flag catalog", async () => {
     const fake = makeFakePostHog();
-    const clientLayer = PostHogClient.layer({
-      apiHost: "/ingest",
-      client: fake.sdk,
-      projectToken: undefined,
-    });
-    const layer = ClientFeatureFlags.layer({
-      flags: [{ key: "new-checkout", fallback: true }],
-    }).pipe(Layer.provideMerge(clientLayer));
 
     await Effect.runPromise(
       Effect.gen(function* () {
         const client = yield* PostHogClient;
-        const flags = yield* ClientFeatureFlags;
+        yield* client.synchronize({
+          _tag: "Authenticated",
+          identity: { distinctId: "user_456", personProperties: undefined },
+        });
+      }).pipe(
+        Effect.provide(
+          PostHogClient.layer({
+            apiHost: "/ingest",
+            client: fake.sdk,
+            projectToken: "project_token",
+          }),
+        ),
+      ),
+    );
+
+    expect(fake.identities).toEqual(["user_456"]);
+    expect(fake.reloadCalls()).toBe(0);
+  });
+
+  test("uses static fallbacks when no project token is configured", async () => {
+    const fake = makeFakePostHog();
+    const layer = PostHogClient.layer({
+      apiHost: "/ingest",
+      client: fake.sdk,
+      flags: [{ key: "new-checkout", fallback: true }],
+      projectToken: undefined,
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* PostHogClient;
         yield* client.capture("ignored");
+        yield* client.synchronize({
+          _tag: "Authenticated",
+          identity: { distinctId: "user_123", personProperties: undefined },
+        });
 
         expect(client.availability).toBe("not-configured");
-        expect(flags.getSnapshot()).toEqual({
+        expect(client.getFeatureFlagSnapshot()).toEqual({
           _tag: "Unavailable",
           reason: "not-configured",
           values: new Map([["new-checkout", true]]),

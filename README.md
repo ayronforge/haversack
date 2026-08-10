@@ -117,8 +117,8 @@ const program = Effect.gen(function* () {
 ```
 
 The browser SDK capability lives in `@ayronforge/haversack/posthog/client`.
-`PostHogClient` initializes one injected `posthog-js` instance shared by
-fail-open capture, identity, and `ClientFeatureFlags`. React bindings live in
+`PostHogClient` initializes one injected `posthog-js` instance and owns
+fail-open capture, identity, and reactive client feature flags. React bindings live in
 `@ayronforge/haversack/posthog/react` (`PostHogClientProvider`,
 `PostHogSessionSynchronizer`, `usePostHogCapture`, `useFeatureFlag`, and
 `FeatureGate`).
@@ -171,8 +171,8 @@ library never reads a global env.
 - `makeQueueClientService(queue)` — queue producer publishing in Cloudflare's
   100-message batches.
 - `AnalyticsEngine` — the strict Analytics Engine SQL API with Schema-decoded
-  rows. `isAnalyticsEngineDatasetMissing(error, dataset)` lets callers opt into
-  a missing-dataset fallback without hiding unrelated SQL errors.
+  rows. Non-successful responses remain typed query errors; the library does
+  not infer undocumented Cloudflare error semantics from response text.
 - `makeR2BlobStorageLayer(bucket)` / `R2BlobPresignerLive` — the blob storage
   contract over R2 (see Contracts below).
 - `@ayronforge/haversack/cf/workflow` —

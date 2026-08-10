@@ -3,34 +3,21 @@ import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useEffect, useSyncExternalStore } from "react";
 
 import type {
-  ClientFeatureFlagsService,
   PostHogClientService,
   PostHogClientSession,
   PostHogEventProperties,
 } from "./client.ts";
 
 const PostHogClientContext = createContext<PostHogClientService | undefined>(undefined);
-const ClientFeatureFlagsContext = createContext<ClientFeatureFlagsService | undefined>(undefined);
 
 export type PostHogClientProviderProps = {
   readonly children: ReactNode;
   readonly client: PostHogClientService;
-  readonly featureFlags?: ClientFeatureFlagsService | undefined;
 };
 
-/** Exposes a Haversack PostHog client and optional feature-flag store to React. */
-export function PostHogClientProvider({
-  children,
-  client,
-  featureFlags,
-}: PostHogClientProviderProps) {
-  return (
-    <PostHogClientContext.Provider value={client}>
-      <ClientFeatureFlagsContext.Provider value={featureFlags}>
-        {children}
-      </ClientFeatureFlagsContext.Provider>
-    </PostHogClientContext.Provider>
-  );
+/** Exposes one Haversack PostHog client to React. */
+export function PostHogClientProvider({ children, client }: PostHogClientProviderProps) {
+  return <PostHogClientContext.Provider value={client}>{children}</PostHogClientContext.Provider>;
 }
 
 export type PostHogSessionSynchronizerProps = {
@@ -40,21 +27,18 @@ export type PostHogSessionSynchronizerProps = {
 /** Synchronizes capture identity and client feature flags with the current session. */
 export function PostHogSessionSynchronizer({ session }: PostHogSessionSynchronizerProps) {
   const client = usePostHogClient();
-  const featureFlags = useContext(ClientFeatureFlagsContext);
 
   useEffect(() => {
-    const synchronization = featureFlags
-      ? featureFlags.synchronize(session)
-      : client.synchronize(session).pipe(
-          Effect.catchTag("PostHogClientError", (error) =>
-            Effect.logWarning("posthog_client_session_synchronization_failed", {
-              operation: error.operation,
-            }),
-          ),
-        );
+    const synchronization = client.synchronize(session).pipe(
+      Effect.catchTag("PostHogClientError", (error) =>
+        Effect.logWarning("posthog_client_session_synchronization_failed", {
+          operation: error.operation,
+        }),
+      ),
+    );
     const interrupt = Effect.runCallback(synchronization);
     return () => interrupt();
-  }, [client, featureFlags, session]);
+  }, [client, session]);
 
   return null;
 }
@@ -72,13 +56,13 @@ export function usePostHogCapture(): (event: string, properties?: PostHogEventPr
 
 /** Returns the flag evaluation, or `undefined` while identity is being evaluated. */
 export function useFeatureFlag(key: string): boolean | undefined {
-  const service = useClientFeatureFlags();
+  const client = usePostHogClient();
   const snapshot = useSyncExternalStore(
-    service.subscribe,
-    service.getSnapshot,
-    service.getSnapshot,
+    client.subscribeFeatureFlags,
+    client.getFeatureFlagSnapshot,
+    client.getFeatureFlagSnapshot,
   );
-  const flag = service.flags.find((definition) => definition.key === key);
+  const flag = client.flags.find((definition) => definition.key === key);
   if (!flag) return undefined;
 
   switch (snapshot._tag) {
@@ -112,10 +96,4 @@ function usePostHogClient(): PostHogClientService {
   const client = useContext(PostHogClientContext);
   if (!client) throw new Error("PostHogClientProvider is missing from the React tree.");
   return client;
-}
-
-function useClientFeatureFlags(): ClientFeatureFlagsService {
-  const service = useContext(ClientFeatureFlagsContext);
-  if (!service) throw new Error("PostHogClientProvider is missing a featureFlags service.");
-  return service;
 }

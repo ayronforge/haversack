@@ -12,7 +12,6 @@ const checks: Array<[path: string, exportName: string]> = [
   ["../dist/email.js", "EmailService"],
   ["../dist/posthog.js", "PostHogAnalytics"],
   ["../dist/posthog/client.js", "PostHogClient"],
-  ["../dist/posthog/client.js", "ClientFeatureFlags"],
   ["../dist/posthog/react.js", "PostHogClientProvider"],
   ["../dist/stripe.js", "StripeClient"],
   ["../dist/auth/workos.js", "WorkosClient"],

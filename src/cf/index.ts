@@ -2,7 +2,6 @@ export {
   AnalyticsEngine,
   AnalyticsEngineConfig,
   AnalyticsEngineQueryError,
-  isAnalyticsEngineDatasetMissing,
 } from "./analytics-engine.ts";
 export type { AnalyticsEngineConfigOptions } from "./analytics-engine.ts";
 export { DistributedLock, DistributedLockError, withLock } from "./distributed-lock.ts";

@@ -102,12 +102,20 @@ describe("S3 BlobStorage", () => {
   });
 
   test("rejects an oversized body from Content-Length", async () => {
+    let bodyCanceled = false;
     const error = await withFetch(
       (async () =>
-        new Response("content", {
-          status: 200,
-          headers: { "Content-Length": "7" },
-        })) as typeof fetch,
+        new Response(
+          new ReadableStream<Uint8Array>({
+            cancel() {
+              bodyCanceled = true;
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Length": "7" },
+          },
+        )) as typeof fetch,
       () =>
         run(
           Effect.gen(function* () {
@@ -120,6 +128,7 @@ describe("S3 BlobStorage", () => {
     expect(error).toEqual(
       new BlobReadLimitExceeded({ key: "large.txt", maxBytes: 6, actualBytes: 7 }),
     );
+    expect(bodyCanceled).toBe(true);
   });
 
   test("enforces maxBytes while streaming when Content-Length is absent", async () => {

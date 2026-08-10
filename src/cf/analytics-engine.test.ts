@@ -2,12 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect, Layer, Redacted, Schema } from "effect";
 
-import {
-  AnalyticsEngine,
-  AnalyticsEngineConfig,
-  AnalyticsEngineQueryError,
-  isAnalyticsEngineDatasetMissing,
-} from "./analytics-engine.ts";
+import { AnalyticsEngine, AnalyticsEngineConfig } from "./analytics-engine.ts";
 
 const configured = AnalyticsEngine.layer.pipe(
   Layer.provide(
@@ -59,7 +54,7 @@ describe("AnalyticsEngine", () => {
     ]);
   });
 
-  test("returns a typed response failure for a missing dataset", async () => {
+  test("returns a typed response failure without inferring response semantics", async () => {
     const error = await withFetch(
       (async () => new Response("Unknown table events", { status: 404 })) as typeof fetch,
       () =>
@@ -80,18 +75,6 @@ describe("AnalyticsEngine", () => {
     expect(error.operation).toBe("response");
     expect(error.status).toBe(404);
     expect(error.detail).toBe("Unknown table events");
-    expect(isAnalyticsEngineDatasetMissing(error, "events")).toBe(true);
-    expect(isAnalyticsEngineDatasetMissing(error, "eventz")).toBe(false);
-    expect(
-      isAnalyticsEngineDatasetMissing(
-        new AnalyticsEngineQueryError({
-          detail: "Unknown table events_archive",
-          operation: "response",
-          status: 404,
-        }),
-        "events",
-      ),
-    ).toBe(false);
   });
 
   test("rejects rows that do not match the supplied schema", async () => {

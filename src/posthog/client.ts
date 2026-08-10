@@ -25,7 +25,7 @@ export type PostHogClientSession =
   | { readonly _tag: "Anonymous" }
   | { readonly _tag: "Authenticated"; readonly identity: PostHogClientIdentity };
 
-/** Minimal SDK port owned by `PostHogClient`. */
+/** Minimal browser SDK port required by `PostHogClient`. */
 export type PostHogClientSdk = {
   readonly capture: (event: string, properties?: PostHogEventProperties) => unknown;
   readonly get_distinct_id: () => string;
@@ -47,6 +47,7 @@ export type PostHogClientSdk = {
 export type PostHogClientLayerOptions = {
   readonly apiHost: string;
   readonly client: PostHogClientSdk;
+  readonly flags?: ReadonlyArray<FeatureFlagDefinition> | undefined;
   readonly initOptions?: Omit<
     PostHogInitOptions,
     "advanced_disable_feature_flags" | "advanced_disable_feature_flags_on_first_load" | "api_host"
@@ -55,17 +56,56 @@ export type PostHogClientLayerOptions = {
 };
 
 /** Expected PostHog SDK operation failure. */
+export type PostHogClientOperation =
+  | "capture"
+  | "featureFlags.read"
+  | "featureFlags.subscribe"
+  | "featureFlags.unsubscribe"
+  | "identify"
+  | "initialize"
+  | "reset";
+
 export class PostHogClientError extends Data.TaggedError("PostHogClientError")<{
   readonly cause: unknown;
-  readonly operation: string;
+  readonly operation: PostHogClientOperation;
 }> {}
 
 /** Whether the SDK is usable by this client instance. */
 export type PostHogClientAvailability = "available" | "initialization-failed" | "not-configured";
 
+type FeatureFlagValues = ReadonlyMap<string, boolean>;
+
+/** Immutable feature-flag state published by `PostHogClient`. */
+export type PostHogFeatureFlagSnapshot =
+  | {
+      readonly _tag: "Unavailable";
+      readonly reason: "initialization-failed" | "not-configured" | "subscription-failed";
+      readonly values: FeatureFlagValues;
+    }
+  | { readonly _tag: "WaitingForIdentity" }
+  | { readonly _tag: "Anonymous" }
+  | { readonly _tag: "Loading"; readonly distinctId: string }
+  | {
+      readonly _tag: "Ready";
+      readonly distinctId: string;
+      readonly values: FeatureFlagValues;
+    }
+  | {
+      readonly _tag: "Failed";
+      readonly distinctId: string;
+      readonly reason: "evaluation" | PostHogClientOperation;
+      readonly values: FeatureFlagValues;
+    };
+
+function fallbackValues(flags: ReadonlyArray<FeatureFlagDefinition>): FeatureFlagValues {
+  const values = new Map<string, boolean>();
+  for (const flag of flags) values.set(flag.key, flag.fallback);
+  return values;
+}
+
 /**
- * Stateful PostHog browser-SDK capability. One instance owns initialization,
- * identity, capture, and the SDK seam consumed by client feature flags.
+ * Stateful PostHog browser capability. One instance owns SDK initialization,
+ * capture, identity transitions, and reactive feature-flag evaluation.
  */
 export class PostHogClient extends Context.Service<
   PostHogClient,
@@ -73,24 +113,29 @@ export class PostHogClient extends Context.Service<
     readonly availability: PostHogClientAvailability;
     /** Captures an event fail-open so analytics cannot break application behavior. */
     readonly capture: (event: string, properties?: PostHogEventProperties) => Effect.Effect<void>;
-    /** Applies an authentication transition to the shared SDK identity. */
+    /** Synchronous feature-flag snapshot for `useSyncExternalStore`. */
+    readonly getFeatureFlagSnapshot: () => PostHogFeatureFlagSnapshot;
+    /** Flag catalog evaluated by this client instance. */
+    readonly flags: ReadonlyArray<FeatureFlagDefinition>;
+    /** Applies an authentication transition and refreshes flags for that identity. */
     readonly synchronize: (
       session: PostHogClientSession,
     ) => Effect.Effect<void, PostHogClientError>;
-    /** Runs a named synchronous operation against the initialized SDK. */
-    readonly use: <A>(
-      operation: string,
-      f: (client: PostHogClientSdk) => A,
-    ) => Effect.Effect<A, PostHogClientError>;
+    /** Subscribes to feature-flag snapshot changes. */
+    readonly subscribeFeatureFlags: (listener: () => void) => () => void;
   }
 >()("@ayronforge/haversack/posthog/PostHogClient") {
-  /** Builds one client instance from an injected PostHog SDK object. */
+  /** Builds one scoped capability from an injected PostHog SDK object. */
   static layer(options: PostHogClientLayerOptions): Layer.Layer<PostHogClient> {
     return Layer.effect(
       PostHogClient,
       Effect.gen(function* () {
         const projectToken = options.projectToken?.trim();
+        const catalog = options.flags ?? [];
+        const listeners = new Set<() => void>();
         let availability: PostHogClientAvailability = projectToken ? "available" : "not-configured";
+        let evaluatedDistinctId: string | undefined;
+        let requestedDistinctId: string | undefined;
 
         if (projectToken) {
           const initialized = yield* Effect.try({
@@ -113,8 +158,22 @@ export class PostHogClient extends Context.Service<
           if (!initialized) availability = "initialization-failed";
         }
 
+        let snapshot: PostHogFeatureFlagSnapshot =
+          availability === "available"
+            ? { _tag: "WaitingForIdentity" }
+            : {
+                _tag: "Unavailable",
+                reason: availability,
+                values: fallbackValues(catalog),
+              };
+
+        const publish = (nextSnapshot: PostHogFeatureFlagSnapshot) => {
+          snapshot = nextSnapshot;
+          for (const listener of listeners) listener();
+        };
+
         const use = Effect.fn("PostHogClient.use")(function* <A>(
-          operation: string,
+          operation: PostHogClientOperation,
           f: (client: PostHogClientSdk) => A,
         ) {
           if (availability !== "available") {
@@ -141,116 +200,12 @@ export class PostHogClient extends Context.Service<
           );
         });
 
-        const synchronize = Effect.fn("PostHogClient.synchronize")(function* (
-          session: PostHogClientSession,
-        ) {
-          switch (session._tag) {
-            case "Pending":
-              return;
-            case "Anonymous":
-              return yield* use("reset", (client) => client.reset());
-            case "Authenticated":
-              return yield* use("identify", (client) => {
-                client.identify(session.identity.distinctId, session.identity.personProperties);
-                client.reloadFeatureFlags();
-              });
-          }
-        });
-
-        return PostHogClient.of({ availability, capture, synchronize, use });
-      }),
-    );
-  }
-}
-
-/** Concrete implementation stored behind the `PostHogClient` tag. */
-export type PostHogClientService = Context.Service.Shape<typeof PostHogClient>;
-
-type FeatureFlagValues = ReadonlyMap<string, boolean>;
-
-/** Immutable snapshot published by client feature flags. */
-export type ClientFeatureFlagSnapshot =
-  | {
-      readonly _tag: "Unavailable";
-      readonly reason: "initialization-failed" | "not-configured";
-      readonly values: FeatureFlagValues;
-    }
-  | { readonly _tag: "WaitingForIdentity" }
-  | { readonly _tag: "Anonymous" }
-  | { readonly _tag: "Loading"; readonly distinctId: string }
-  | {
-      readonly _tag: "Ready";
-      readonly distinctId: string;
-      readonly values: FeatureFlagValues;
-    }
-  | {
-      readonly _tag: "Failed";
-      readonly distinctId: string;
-      readonly reason: string;
-      readonly values: FeatureFlagValues;
-    };
-
-/** Flag catalog supplied when building `ClientFeatureFlags`. */
-export type ClientFeatureFlagsLayerOptions = {
-  readonly flags: ReadonlyArray<FeatureFlagDefinition>;
-};
-
-function fallbackValues(flags: ReadonlyArray<FeatureFlagDefinition>): FeatureFlagValues {
-  const values = new Map<string, boolean>();
-  for (const flag of flags) values.set(flag.key, flag.fallback);
-  return values;
-}
-
-/**
- * Reactive feature-flag store backed by the shared `PostHogClient` instance
- * and compatible with React's `useSyncExternalStore`.
- */
-export class ClientFeatureFlags extends Context.Service<
-  ClientFeatureFlags,
-  {
-    /** Synchronous snapshot required by `useSyncExternalStore`. */
-    readonly getSnapshot: () => ClientFeatureFlagSnapshot;
-    /** Flag catalog this instance evaluates. */
-    readonly flags: ReadonlyArray<FeatureFlagDefinition>;
-    /** Synchronizes SDK identity and evaluates all configured client flags. */
-    readonly synchronize: (session: PostHogClientSession) => Effect.Effect<void>;
-    /** Subscribes to snapshot changes; returns the unsubscribe callback. */
-    readonly subscribe: (listener: () => void) => () => void;
-  }
->()("@ayronforge/haversack/posthog/ClientFeatureFlags") {
-  /** Builds a scoped reactive store over `PostHogClient`. */
-  static layer(
-    options: ClientFeatureFlagsLayerOptions,
-  ): Layer.Layer<ClientFeatureFlags, never, PostHogClient> {
-    return Layer.effect(
-      ClientFeatureFlags,
-      Effect.gen(function* () {
-        const client = yield* PostHogClient;
-        const effectContext = yield* Effect.context<never>();
-        const catalog = options.flags;
-        const listeners = new Set<() => void>();
-        let evaluatedDistinctId: string | undefined;
-        let requestedDistinctId: string | undefined;
-        let snapshot: ClientFeatureFlagSnapshot =
-          client.availability === "available"
-            ? { _tag: "WaitingForIdentity" }
-            : {
-                _tag: "Unavailable",
-                reason: client.availability,
-                values: fallbackValues(catalog),
-              };
-
-        const publish = (nextSnapshot: ClientFeatureFlagSnapshot) => {
-          snapshot = nextSnapshot;
-          for (const listener of listeners) listener();
-        };
-
-        const readEvaluation = Effect.fn("ClientFeatureFlags.readEvaluation")(function* () {
-          const evaluation = yield* client.use("featureFlags.read", (sdk) => {
-            const distinctId = sdk.get_distinct_id();
+        const readEvaluation = Effect.fn("PostHogClient.readFeatureFlags")(function* () {
+          const evaluation = yield* use("featureFlags.read", (client) => {
+            const distinctId = client.get_distinct_id();
             const values = new Map<string, boolean>();
             for (const flag of catalog) {
-              values.set(flag.key, sdk.isFeatureEnabled(flag.key, { fresh: true }) === true);
+              values.set(flag.key, client.isFeatureEnabled(flag.key, { fresh: true }) === true);
             }
             return { distinctId, values };
           });
@@ -264,7 +219,8 @@ export class ClientFeatureFlags extends Context.Service<
           });
         });
 
-        if (client.availability === "available") {
+        if (availability === "available" && catalog.length > 0) {
+          const effectContext = yield* Effect.context<never>();
           const onFeatureFlags: FeatureFlagsCallback = (_flags, _variants, context) => {
             if (context?.errorsLoading) {
               if (!requestedDistinctId) return;
@@ -297,23 +253,21 @@ export class ClientFeatureFlags extends Context.Service<
           };
 
           yield* Effect.acquireRelease(
-            client
-              .use("featureFlags.subscribe", (sdk) => sdk.onFeatureFlags(onFeatureFlags))
-              .pipe(
-                Effect.catchTag("PostHogClientError", (error) =>
-                  Effect.gen(function* () {
-                    snapshot = {
-                      _tag: "Unavailable",
-                      reason: "initialization-failed",
-                      values: fallbackValues(catalog),
-                    };
-                    yield* Effect.logWarning("posthog_client_feature_flags_subscription_failed", {
-                      operation: error.operation,
-                    });
-                    return () => undefined;
-                  }),
-                ),
+            use("featureFlags.subscribe", (client) => client.onFeatureFlags(onFeatureFlags)).pipe(
+              Effect.catchTag("PostHogClientError", (error) =>
+                Effect.gen(function* () {
+                  snapshot = {
+                    _tag: "Unavailable",
+                    reason: "subscription-failed",
+                    values: fallbackValues(catalog),
+                  };
+                  yield* Effect.logWarning("posthog_client_feature_flags_subscription_failed", {
+                    operation: error.operation,
+                  });
+                  return () => undefined;
+                }),
               ),
+            ),
             (unsubscribe) =>
               Effect.try({
                 try: unsubscribe,
@@ -330,10 +284,10 @@ export class ClientFeatureFlags extends Context.Service<
           );
         }
 
-        const synchronize = Effect.fn("ClientFeatureFlags.synchronize")(function* (
+        const synchronize = Effect.fn("PostHogClient.synchronize")(function* (
           session: PostHogClientSession,
         ) {
-          if (client.availability !== "available") return;
+          if (availability !== "available") return;
 
           switch (session._tag) {
             case "Pending":
@@ -345,39 +299,39 @@ export class ClientFeatureFlags extends Context.Service<
               requestedDistinctId = undefined;
               evaluatedDistinctId = undefined;
               publish({ _tag: "Anonymous" });
-              break;
-            case "Authenticated":
+              return yield* use("reset", (client) => client.reset());
+            case "Authenticated": {
               requestedDistinctId = session.identity.distinctId;
               if (evaluatedDistinctId !== session.identity.distinctId) {
                 publish({ _tag: "Loading", distinctId: session.identity.distinctId });
               }
-              break;
-          }
 
-          yield* client.synchronize(session).pipe(
-            Effect.catchTag("PostHogClientError", (error) =>
-              Effect.gen(function* () {
-                if (session._tag === "Authenticated") {
-                  evaluatedDistinctId = session.identity.distinctId;
-                  publish({
-                    _tag: "Failed",
-                    distinctId: session.identity.distinctId,
-                    reason: error.operation,
-                    values: fallbackValues(catalog),
-                  });
-                }
-                yield* Effect.logWarning("posthog_client_session_synchronization_failed", {
-                  operation: error.operation,
-                });
-              }),
-            ),
-          );
+              return yield* use("identify", (client) => {
+                client.identify(session.identity.distinctId, session.identity.personProperties);
+                if (catalog.length > 0) client.reloadFeatureFlags();
+              }).pipe(
+                Effect.tapError((error) =>
+                  Effect.sync(() => {
+                    evaluatedDistinctId = session.identity.distinctId;
+                    publish({
+                      _tag: "Failed",
+                      distinctId: session.identity.distinctId,
+                      reason: error.operation,
+                      values: fallbackValues(catalog),
+                    });
+                  }),
+                ),
+              );
+            }
+          }
         });
 
-        return ClientFeatureFlags.of({
-          getSnapshot: () => snapshot,
+        return PostHogClient.of({
+          availability,
+          capture,
           flags: catalog,
-          subscribe: (listener) => {
+          getFeatureFlagSnapshot: () => snapshot,
+          subscribeFeatureFlags: (listener) => {
             listeners.add(listener);
             return () => listeners.delete(listener);
           },
@@ -388,22 +342,5 @@ export class ClientFeatureFlags extends Context.Service<
   }
 }
 
-/** Concrete implementation stored behind the `ClientFeatureFlags` tag. */
-export type ClientFeatureFlagsService = Context.Service.Shape<typeof ClientFeatureFlags>;
-
-/** Inert client feature flags serving static fallbacks. */
-export function unavailableClientFeatureFlags(
-  flags: ReadonlyArray<FeatureFlagDefinition>,
-): ClientFeatureFlagsService {
-  const snapshot: ClientFeatureFlagSnapshot = {
-    _tag: "Unavailable",
-    reason: "initialization-failed",
-    values: fallbackValues(flags),
-  };
-  return ClientFeatureFlags.of({
-    getSnapshot: () => snapshot,
-    flags,
-    subscribe: () => () => undefined,
-    synchronize: () => Effect.void,
-  });
-}
+/** Concrete implementation stored behind the `PostHogClient` tag. */
+export type PostHogClientService = Context.Service.Shape<typeof PostHogClient>;
