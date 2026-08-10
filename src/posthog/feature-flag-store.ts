@@ -15,7 +15,10 @@ export function createFeatureFlagStore(
   client: PostHog,
   flag: FeatureFlagDefinition,
 ): FeatureFlagStore {
-  let snapshot: FeatureFlagValue;
+  let snapshot: FeatureFlagValue =
+    client.config.advanced_disable_feature_flags && !client.featureFlags?.hasLoadedFlags
+      ? flag.fallback
+      : undefined;
 
   return {
     getServerSnapshot: () => undefined,
@@ -26,9 +29,7 @@ export function createFeatureFlagStore(
         listener();
       });
       const unsubscribeFlags = client.onFeatureFlags((_flags, _variants, context) => {
-        snapshot = context?.errorsLoading
-          ? flag.fallback
-          : client.isFeatureEnabled(flag.key) === true;
+        snapshot = context?.errorsLoading ? flag.fallback : evaluateFeatureFlag(client, flag);
         listener();
       });
 
@@ -38,4 +39,12 @@ export function createFeatureFlagStore(
       };
     },
   };
+}
+
+function evaluateFeatureFlag(client: PostHog, flag: FeatureFlagDefinition): boolean {
+  try {
+    return client.isFeatureEnabled(flag.key) === true;
+  } catch {
+    return flag.fallback;
+  }
 }

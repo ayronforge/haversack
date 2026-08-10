@@ -6,6 +6,8 @@ import { createFeatureFlagStore } from "./feature-flag-store.ts";
 
 function recordingPostHog(initial?: {
   readonly enabled?: boolean;
+  readonly evaluationThrows?: boolean;
+  readonly featureFlagsDisabled?: boolean;
   readonly hasLoadedFlags?: boolean;
 }) {
   let featureFlagsCallback: Parameters<PostHog["onFeatureFlags"]>[0] | undefined;
@@ -16,7 +18,14 @@ function recordingPostHog(initial?: {
   let unsubscriptions = 0;
 
   const client = {
-    isFeatureEnabled: () => enabled,
+    config: {
+      advanced_disable_feature_flags: initial?.featureFlagsDisabled ?? false,
+    },
+    featureFlags: { hasLoadedFlags },
+    isFeatureEnabled: () => {
+      if (initial?.evaluationThrows) throw new Error("evaluation failed");
+      return enabled;
+    },
     on: (event: string, callback: () => void) => {
       expect(event).toBe("featureFlagsReloading");
       reloadingCallback = callback;
@@ -76,12 +85,32 @@ describe("PostHog feature flag store", () => {
     unsubscribe();
   });
 
-  test("uses the definition fallback when evaluation fails", () => {
+  test("uses the definition fallback when PostHog reports a loading failure", () => {
     const posthog = recordingPostHog();
     const store = createFeatureFlagStore(posthog.client, flag);
     const unsubscribe = store.subscribe(() => undefined);
 
     posthog.emitFlags(undefined, true);
+
+    expect(store.getSnapshot()).toBe(true);
+    unsubscribe();
+  });
+
+  test("uses the definition fallback when local evaluation throws", () => {
+    const posthog = recordingPostHog({ evaluationThrows: true });
+    const store = createFeatureFlagStore(posthog.client, flag);
+    const unsubscribe = store.subscribe(() => undefined);
+
+    posthog.emitFlags(undefined);
+
+    expect(store.getSnapshot()).toBe(true);
+    unsubscribe();
+  });
+
+  test("uses the definition fallback when feature flag loading is explicitly disabled", () => {
+    const posthog = recordingPostHog({ featureFlagsDisabled: true });
+    const store = createFeatureFlagStore(posthog.client, flag);
+    const unsubscribe = store.subscribe(() => undefined);
 
     expect(store.getSnapshot()).toBe(true);
     unsubscribe();

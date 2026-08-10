@@ -46,7 +46,12 @@ export function materializeBlobBody({
       },
     ),
     Stream.runCollect,
-    Effect.map(concatenateChunks),
+    Effect.flatMap((chunks) =>
+      Effect.try({
+        try: () => concatenateChunks(chunks),
+        catch: (cause) => new BlobStorageError({ operation: "get", key, cause }),
+      }),
+    ),
   );
 }
 
