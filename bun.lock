@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "@ayronforge/haversack",
+      "dependencies": {
+        "aws4fetch": "1.0.20",
+      },
       "devDependencies": {
         "@clerk/backend": "3.16.1",
         "@cloudflare/workers-types": "5.20260808.1",
@@ -11,7 +14,6 @@
         "@types/bun": "^1.3.8",
         "@types/react": "^19.0.0",
         "@workos-inc/node": "10.9.0",
-        "aws4fetch": "1.0.20",
         "effect": "4.0.0-rc.108",
         "libphonenumber-js": "1.13.10",
         "oxfmt": "^0.62.0",
@@ -29,7 +31,6 @@
         "@clerk/backend": "^3.0.0",
         "@posthog/react": ">=1.10.2 <2",
         "@workos-inc/node": "^10.0.0",
-        "aws4fetch": "^1.0.0",
         "effect": ">=4.0.0-rc.108 <5",
         "libphonenumber-js": "^1.12.0",
         "posthog-js": ">=1.390.2",
@@ -42,7 +43,6 @@
         "@clerk/backend",
         "@posthog/react",
         "@workos-inc/node",
-        "aws4fetch",
         "posthog-js",
         "react",
         "react-email",
