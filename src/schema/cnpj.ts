@@ -1,20 +1,22 @@
 import { Schema, SchemaGetter } from "effect";
 
-const onlyDigits = (value: string) => value.replace(/\D/g, "");
+/** Removes CNPJ punctuation and other non-digit input characters. */
+export const normalizeCnpj = (value: string): string => value.replace(/\D/g, "");
 
 const cnpjCheckDigit = (digits: string, length: number): number => {
   const weights =
     length === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
   let sum = 0;
-  for (let index = 0; index < length; index += 1) {
-    sum += Number(digits[index]) * weights[index]!;
+  for (const [index, weight] of weights.entries()) {
+    sum += Number(digits[index]) * weight;
   }
   const remainder = sum % 11;
   return remainder < 2 ? 0 : 11 - remainder;
 };
 
-/** Validates the 14-digit CNPJ check digits (input must already be digits-only). */
-export const isValidCnpj = (digits: string): boolean => {
+/** Validates masked or canonical CNPJ input using both check digits. */
+export const isValidCnpj = (input: string): boolean => {
+  const digits = normalizeCnpj(input);
   if (!/^\d{14}$/.test(digits)) return false;
   if (/^(\d)\1{13}$/.test(digits)) return false;
   return (
@@ -26,21 +28,19 @@ export const isValidCnpj = (digits: string): boolean => {
 /** A canonical CNPJ: 14 digits, valid check digits. */
 export const Cnpj = Schema.String.check(
   Schema.makeFilter<string>((value) => isValidCnpj(value) || "Invalid CNPJ."),
-);
+).pipe(Schema.brand("Cnpj"));
 export type Cnpj = typeof Cnpj.Type;
 
 /**
  * Accepts a CNPJ with or without punctuation (`"12.345.678/0001-95"`), decodes
- * to the canonical 14-digit form, and validates the check digits. Encodes back
- * to the punctuated display format.
+ * to the canonical 14-digit form, and validates the check digits. Encoding
+ * keeps the canonical digits; use {@link formatCnpj} only at presentation
+ * boundaries.
  */
 export const CnpjFromString = Schema.String.pipe(
   Schema.decodeTo(Cnpj, {
-    decode: SchemaGetter.transform(onlyDigits),
-    encode: SchemaGetter.transform(
-      (digits: string) =>
-        `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`,
-    ),
+    decode: SchemaGetter.transform(normalizeCnpj),
+    encode: SchemaGetter.passthrough(),
   }),
 );
 

@@ -1,6 +1,6 @@
 {
   "name": "@ayronforge/haversack",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Typed TypeScript toolbox: Effect services for backend integrations plus focused React bindings for PostHog feature flags",
   "keywords": [
     "effect",

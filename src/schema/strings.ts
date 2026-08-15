@@ -1,4 +1,4 @@
-import { Schema, SchemaGetter, SchemaTransformation } from "effect";
+import { Effect, Option, Schema, SchemaGetter, SchemaIssue, SchemaTransformation } from "effect";
 
 /** Trims the input and requires the result to be non-empty. */
 export const NonEmptyTrimmedString = Schema.Trim.pipe(
@@ -10,33 +10,66 @@ export const TrimmedUrl = NonEmptyTrimmedString.pipe(
   Schema.decodeTo(Schema.URLFromString, SchemaTransformation.passthrough()),
 );
 
-/**
- * An http(s) endpoint base URL, normalized to a string without trailing
- * slashes. Rejects URLs carrying a query string or fragment.
- */
-export const EndpointUrl = Schema.URLFromString.check(
-  Schema.makeFilter<URL>((url) => {
-    if (url.protocol !== "https:" && url.protocol !== "http:") {
-      return "URL must use http or https.";
-    }
-    if (url.search || url.hash) {
-      return "URL must not include query string or fragment.";
-    }
-    return true;
+type EndpointUrlParseResult =
+  | { readonly _tag: "Success"; readonly value: string }
+  | { readonly _tag: "Failure"; readonly message: string };
+
+function parseEndpointUrl(input: string): EndpointUrlParseResult {
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    return { _tag: "Failure", message: "Invalid URL." };
+  }
+
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    return { _tag: "Failure", message: "URL must use http or https." };
+  }
+  if (url.search || url.hash) {
+    return { _tag: "Failure", message: "URL must not include query string or fragment." };
+  }
+
+  return {
+    _tag: "Success",
+    value: `${url.origin}${url.pathname === "/" ? "" : url.pathname}`.replace(/\/+$/, ""),
+  };
+}
+
+/** A canonical http(s) endpoint base URL without trailing slashes, query, or fragment. */
+export const EndpointUrl = Schema.String.check(
+  Schema.makeFilter<string>((value) => {
+    const result = parseEndpointUrl(value);
+    if (result._tag === "Failure") return result.message;
+    return result.value === value || "Endpoint URL must be canonical.";
   }),
-).pipe(
-  Schema.decodeTo(Schema.String, {
-    decode: SchemaGetter.transform((url: URL) =>
-      `${url.origin}${url.pathname === "/" ? "" : url.pathname}`.replace(/\/+$/, ""),
-    ),
-    encode: SchemaGetter.transform((url: string) => new URL(url)),
+).pipe(Schema.brand("EndpointUrl"));
+export type EndpointUrl = typeof EndpointUrl.Type;
+
+/** Parses URL input into a canonical {@link EndpointUrl}. */
+export const EndpointUrlFromString = Schema.String.pipe(
+  Schema.decodeTo(EndpointUrl, {
+    decode: SchemaGetter.transformOrFail((input: string) => {
+      const result = parseEndpointUrl(input);
+      if (result._tag === "Success") return Effect.succeed(result.value);
+      return Effect.fail(new SchemaIssue.InvalidValue({ message: result.message }, Option.none()));
+    }),
+    encode: SchemaGetter.passthrough(),
   }),
 );
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A canonical lowercase UUID with valid version and RFC variant bits. */
+export const Uuid = Schema.String.check(Schema.isUUID(), Schema.isLowercased()).pipe(
+  Schema.brand("Uuid"),
+);
+export type Uuid = typeof Uuid.Type;
 
-/** A UUID string (any version). */
-export const Uuid = Schema.String.check(Schema.isPattern(uuidPattern));
+/** Parses UUID input into its canonical lowercase representation. */
+export const UuidFromString = Schema.String.pipe(
+  Schema.decodeTo(Uuid, {
+    decode: SchemaGetter.transform((value: string) => value.toLowerCase()),
+    encode: SchemaGetter.passthrough(),
+  }),
+);
 
 export type EmailAddressFromStringOptions = {
   /** Lowercase the local part for case-insensitive identity systems. */

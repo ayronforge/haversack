@@ -47,17 +47,24 @@ separate presentation formatters.
 ```ts
 import { Schema } from "effect";
 import {
+  CnpjFromString,
   CpfFromString,
   EmailAddressFromString,
-  EndpointUrl,
+  EndpointUrlFromString,
+  formatCnpj,
   formatCpf,
   PhoneNumberFromString,
   SlugFromString,
+  UuidFromString,
 } from "@ayronforge/haversack/schema";
 
 const cpf = Schema.decodeUnknownSync(CpfFromString)("529.982.247-25");
 // "52998224725" — canonical digits in both decoded and encoded forms
 formatCpf(cpf); // "529.982.247-25"
+
+const cnpj = Schema.decodeUnknownSync(CnpjFromString)("11.222.333/0001-81");
+// "11222333000181" — canonical digits in both decoded and encoded forms
+formatCnpj(cnpj); // "11.222.333/0001-81"
 
 const phone = Schema.decodeUnknownSync(PhoneNumberFromString({ defaultCountry: "BR" }))(
   "(11) 98765-4321",
@@ -67,11 +74,14 @@ const phone = Schema.decodeUnknownSync(PhoneNumberFromString({ defaultCountry: "
 const email = Schema.decodeUnknownSync(EmailAddressFromString())("User@Example.COM");
 // "User@example.com" — domain normalized, local part preserved by default
 
-const host = Schema.decodeUnknownSync(EndpointUrl)("https://api.example.com/");
+const host = Schema.decodeUnknownSync(EndpointUrlFromString)("https://api.example.com/");
 // "https://api.example.com" — normalized, rejects query strings and fragments
 
 const slug = Schema.decodeUnknownSync(SlugFromString)("Café com Leite!");
 // "cafe-com-leite"
+
+const uuid = Schema.decodeUnknownSync(UuidFromString)("0198A3FC-9DB1-7BD5-8A1E-2F6A1F4C9D10");
+// "0198a3fc-9db1-7bd5-8a1e-2f6a1f4c9d10" — strict, canonical UUID
 ```
 
 `CepLookup.layerViaCep({ fetch })` resolves an already parsed `Cep` without
