@@ -1,6 +1,7 @@
 import { Schema, SchemaGetter } from "effect";
 
-const onlyDigits = (value: string) => value.replace(/\D/g, "");
+/** Removes CPF punctuation and other non-digit input characters. */
+export const normalizeCpf = (value: string): string => value.replace(/\D/g, "");
 
 const cpfCheckDigit = (digits: string, length: number): number => {
   let sum = 0;
@@ -11,8 +12,9 @@ const cpfCheckDigit = (digits: string, length: number): number => {
   return remainder === 10 ? 0 : remainder;
 };
 
-/** Validates the 11-digit CPF check digits (input must already be digits-only). */
-export const isValidCpf = (digits: string): boolean => {
+/** Validates masked or canonical CPF input using both check digits. */
+export const isValidCpf = (input: string): boolean => {
+  const digits = normalizeCpf(input);
   if (!/^\d{11}$/.test(digits)) return false;
   if (/^(\d)\1{10}$/.test(digits)) return false;
   return (
@@ -24,21 +26,18 @@ export const isValidCpf = (digits: string): boolean => {
 /** A canonical CPF: 11 digits, valid check digits. */
 export const Cpf = Schema.String.check(
   Schema.makeFilter<string>((value) => isValidCpf(value) || "Invalid CPF."),
-);
+).pipe(Schema.brand("Cpf"));
 export type Cpf = typeof Cpf.Type;
 
 /**
  * Accepts a CPF with or without punctuation (`"123.456.789-09"`), decodes to
- * the canonical 11-digit form, and validates the check digits. Encodes back to
- * the punctuated display format.
+ * the canonical 11-digit form, and validates the check digits. Encoding keeps
+ * the canonical digits; use {@link formatCpf} only at presentation boundaries.
  */
 export const CpfFromString = Schema.String.pipe(
   Schema.decodeTo(Cpf, {
-    decode: SchemaGetter.transform(onlyDigits),
-    encode: SchemaGetter.transform(
-      (digits: string) =>
-        `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`,
-    ),
+    decode: SchemaGetter.transform(normalizeCpf),
+    encode: SchemaGetter.passthrough(),
   }),
 );
 

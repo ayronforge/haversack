@@ -10,6 +10,7 @@ import {
   formatCep,
   formatCnpj,
   formatCpf,
+  isValidCpf,
 } from "./index.ts";
 
 const decode = <S extends Schema.Top>(schema: S, input: unknown): S["Type"] =>
@@ -37,10 +38,13 @@ describe("Cpf", () => {
   test("rejects repeated digits", () => {
     expect(decodeFails(CpfFromString, "111.111.111-11")).toBe(true);
   });
-  test("encodes back to punctuated form", () => {
+  test("encodes canonical digits and formats only for display", () => {
     const cpf = decode(CpfFromString, "52998224725");
-    expect(Effect.runSync(Schema.encodeEffect(CpfFromString)(cpf))).toBe("529.982.247-25");
+    expect(Effect.runSync(Schema.encodeEffect(CpfFromString)(cpf))).toBe("52998224725");
     expect(formatCpf(cpf)).toBe("529.982.247-25");
+  });
+  test("validates masked input", () => {
+    expect(isValidCpf("529.982.247-25")).toBe(true);
   });
 });
 
@@ -63,32 +67,26 @@ describe("Cep", () => {
   test("rejects short values", () => {
     expect(decodeFails(CepFromString, "0131010")).toBe(true);
   });
-  test("formats for display", () => {
-    expect(formatCep(decode(CepFromString, "01310100"))).toBe("01310-100");
+  test("encodes canonical digits and formats only for display", () => {
+    const cep = decode(CepFromString, "01310-100");
+    expect(Effect.runSync(Schema.encodeEffect(CepFromString)(cep))).toBe("01310100");
+    expect(formatCep(cep)).toBe("01310-100");
   });
 });
 
 describe("CepLookup", () => {
-  const withFetch = async <A>(fake: typeof fetch, run: () => Promise<A>): Promise<A> => {
-    const original = globalThis.fetch;
-    globalThis.fetch = fake;
-    try {
-      return await run();
-    } finally {
-      globalThis.fetch = original;
-    }
+  const lookupEffect = (fake: typeof fetch, input: string) => {
+    const cep = decode(CepFromString, input);
+    return Effect.gen(function* () {
+      const service = yield* CepLookup;
+      return yield* service.lookup(cep);
+    }).pipe(Effect.provide(CepLookup.layerViaCep({ fetch: fake })));
   };
-
-  const lookup = (cep: string) =>
-    Effect.runPromise(
-      Effect.gen(function* () {
-        const service = yield* CepLookup;
-        return yield* service.lookup(cep);
-      }).pipe(Effect.provide(CepLookup.layer)) as Effect.Effect<unknown, unknown>,
-    );
+  const lookup = (fake: typeof fetch, input: string) =>
+    Effect.runPromise(lookupEffect(fake, input));
 
   test("resolves an address", async () => {
-    const address = await withFetch(
+    const address = await lookup(
       (async () =>
         new Response(
           JSON.stringify({
@@ -101,7 +99,7 @@ describe("CepLookup", () => {
           }),
           { status: 200 },
         )) as typeof fetch,
-      () => lookup("01310-100"),
+      "01310-100",
     );
     expect(address).toEqual({
       postalCode: "01310100",
@@ -113,26 +111,52 @@ describe("CepLookup", () => {
     });
   });
 
-  test("fails with not-found for unknown CEP", async () => {
-    await withFetch(
-      (async () => new Response(JSON.stringify({ erro: true }), { status: 200 })) as typeof fetch,
-      async () => {
-        await expect(lookup("99999999")).rejects.toThrow();
-      },
+  test("accepts ViaCEP responses without street or neighborhood", async () => {
+    const address = await lookup(
+      (async () =>
+        new Response(
+          JSON.stringify({
+            cep: "69301-970",
+            localidade: "Boa Vista",
+            uf: "RR",
+          }),
+          { status: 200 },
+        )) as typeof fetch,
+      "69301-970",
     );
+    expect(address.street).toBe("");
+    expect(address.neighborhood).toBe("");
+    expect(address.state).toBe("RR");
   });
 
-  test("fails with invalid-cep without hitting the network", async () => {
-    let called = false;
-    await withFetch(
-      (async () => {
-        called = true;
-        return new Response("{}");
-      }) as typeof fetch,
-      async () => {
-        await expect(lookup("abc")).rejects.toThrow();
-      },
+  test.each([true, "true"])("fails with CepNotFound for erro=%p", async (erro) => {
+    const failure = await Effect.runPromise(
+      lookupEffect(
+        (async () => new Response(JSON.stringify({ erro }), { status: 200 })) as typeof fetch,
+        "99999999",
+      ).pipe(Effect.flip),
     );
-    expect(called).toBe(false);
+    expect(failure._tag).toBe("CepNotFound");
+  });
+
+  test("fails with InvalidCepResponse for incomplete responses", async () => {
+    const failure = await Effect.runPromise(
+      lookupEffect(
+        (async () => new Response(JSON.stringify({ cep: "01310-100" }))) as typeof fetch,
+        "01310-100",
+      ).pipe(Effect.flip),
+    );
+    expect(failure._tag).toBe("InvalidCepResponse");
+  });
+
+  test("fails with CepLookupUnavailable for unsuccessful responses", async () => {
+    const failure = await Effect.runPromise(
+      lookupEffect(
+        (async () => new Response("unavailable", { status: 503 })) as typeof fetch,
+        "01310-100",
+      ).pipe(Effect.flip),
+    );
+    expect(failure._tag).toBe("CepLookupUnavailable");
+    if (failure._tag === "CepLookupUnavailable") expect(failure.status).toBe(503);
   });
 });
