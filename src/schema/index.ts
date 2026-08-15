@@ -9,7 +9,7 @@ export {
   normalizeCep,
 } from "./cep.ts";
 export type { CepAddress, CepLookupError, CepLookupLayerOptions } from "./cep.ts";
-export { Cnpj, CnpjFromString, formatCnpj, isValidCnpj } from "./cnpj.ts";
+export { Cnpj, CnpjFromString, formatCnpj, isValidCnpj, normalizeCnpj } from "./cnpj.ts";
 export { Cpf, CpfFromString, formatCpf, isValidCpf, normalizeCpf } from "./cpf.ts";
 export {
   formatPhoneNumber,
@@ -24,8 +24,10 @@ export {
   EmailAddress,
   EmailAddressFromString,
   EndpointUrl,
+  EndpointUrlFromString,
   NonEmptyTrimmedString,
   TrimmedUrl,
   Uuid,
+  UuidFromString,
 } from "./strings.ts";
 export type { EmailAddressFromStringOptions } from "./strings.ts";

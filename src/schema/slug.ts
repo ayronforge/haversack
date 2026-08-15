@@ -3,7 +3,7 @@ import { Schema, SchemaGetter } from "effect";
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/;
 
 /** A DNS-label-style slug: 3-63 chars, lowercase alphanumerics and hyphens, no edge hyphens. */
-export const Slug = Schema.String.check(Schema.isPattern(SLUG_PATTERN));
+export const Slug = Schema.String.check(Schema.isPattern(SLUG_PATTERN)).pipe(Schema.brand("Slug"));
 export type Slug = typeof Slug.Type;
 
 const toSlug = (value: string): string =>

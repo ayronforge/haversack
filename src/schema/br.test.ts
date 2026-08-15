@@ -10,7 +10,9 @@ import {
   formatCep,
   formatCnpj,
   formatCpf,
+  isValidCnpj,
   isValidCpf,
+  normalizeCnpj,
 } from "./index.ts";
 
 const decode = <S extends Schema.Top>(schema: S, input: unknown): S["Type"] =>
@@ -52,11 +54,25 @@ describe("Cnpj", () => {
   test("decodes punctuated CNPJ to canonical digits", () => {
     expect(decode(CnpjFromString, "11.222.333/0001-81")).toBe("11222333000181");
   });
+  test("accepts bare digits", () => {
+    expect(decode(CnpjFromString, "11222333000181")).toBe("11222333000181");
+  });
   test("rejects wrong check digits", () => {
     expect(decodeFails(CnpjFromString, "11.222.333/0001-82")).toBe(true);
   });
-  test("formats for display", () => {
-    expect(formatCnpj(decode(CnpjFromString, "11222333000181"))).toBe("11.222.333/0001-81");
+  test("rejects repeated digits", () => {
+    expect(decodeFails(CnpjFromString, "11.111.111/1111-11")).toBe(true);
+  });
+  test("encodes canonical digits and formats only for display", () => {
+    const cnpj = decode(CnpjFromString, "11222333000181");
+    expect(Effect.runSync(Schema.encodeEffect(CnpjFromString)(cnpj))).toBe("11222333000181");
+    expect(formatCnpj(cnpj)).toBe("11.222.333/0001-81");
+  });
+  test("validates masked input", () => {
+    expect(isValidCnpj("11.222.333/0001-81")).toBe(true);
+  });
+  test("exports canonical normalization", () => {
+    expect(normalizeCnpj("11.222.333/0001-81")).toBe("11222333000181");
   });
 });
 

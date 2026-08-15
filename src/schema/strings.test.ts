@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect, Schema } from "effect";
 
-import { EmailAddressFromString, EndpointUrl, NonEmptyTrimmedString, Uuid } from "./index.ts";
+import {
+  EmailAddressFromString,
+  EndpointUrl,
+  EndpointUrlFromString,
+  NonEmptyTrimmedString,
+  Uuid,
+  UuidFromString,
+} from "./index.ts";
 
 const decode = <S extends Schema.Top>(schema: S, input: S["Encoded"]): S["Type"] =>
   Effect.runSync(Schema.decodeUnknownEffect(schema)(input) as Effect.Effect<S["Type"], unknown>);
@@ -27,16 +34,30 @@ describe("NonEmptyTrimmedString", () => {
 
 describe("EndpointUrl", () => {
   test("normalizes trailing slash", () => {
-    expect(decode(EndpointUrl, "https://api.example.com/")).toBe("https://api.example.com");
+    expect(decode(EndpointUrlFromString, "https://api.example.com/")).toBe(
+      "https://api.example.com",
+    );
   });
   test("keeps path", () => {
-    expect(decode(EndpointUrl, "https://api.example.com/v1/")).toBe("https://api.example.com/v1");
+    expect(decode(EndpointUrlFromString, "https://api.example.com/v1/")).toBe(
+      "https://api.example.com/v1",
+    );
+  });
+  test("encodes the canonical URL", () => {
+    const endpoint = decode(EndpointUrlFromString, "https://api.example.com/");
+    expect(Effect.runSync(Schema.encodeEffect(EndpointUrlFromString)(endpoint))).toBe(
+      "https://api.example.com",
+    );
+  });
+  test("requires canonical input at the domain boundary", () => {
+    expect(decode(EndpointUrl, "https://api.example.com")).toBe("https://api.example.com");
+    expect(decodeFails(EndpointUrl, "https://api.example.com/")).toBe(true);
   });
   test("rejects query strings", () => {
-    expect(decodeFails(EndpointUrl, "https://api.example.com/?x=1")).toBe(true);
+    expect(decodeFails(EndpointUrlFromString, "https://api.example.com/?x=1")).toBe(true);
   });
   test("rejects non-http protocols", () => {
-    expect(decodeFails(EndpointUrl, "ftp://example.com")).toBe(true);
+    expect(decodeFails(EndpointUrlFromString, "ftp://example.com")).toBe(true);
   });
 });
 
@@ -65,12 +86,26 @@ describe("EmailAddress", () => {
 });
 
 describe("Uuid", () => {
-  test("accepts uuid", () => {
+  test("accepts canonical UUID input", () => {
     expect(decode(Uuid, "0198a3fc-9db1-7bd5-8a1e-2f6a1f4c9d10")).toBe(
       "0198a3fc-9db1-7bd5-8a1e-2f6a1f4c9d10",
     );
   });
+  test("normalizes uppercase input and encodes canonical lowercase", () => {
+    const uuid = decode(UuidFromString, "0198A3FC-9DB1-7BD5-8A1E-2F6A1F4C9D10");
+    expect(uuid).toBe("0198a3fc-9db1-7bd5-8a1e-2f6a1f4c9d10");
+    expect(Effect.runSync(Schema.encodeEffect(UuidFromString)(uuid))).toBe(
+      "0198a3fc-9db1-7bd5-8a1e-2f6a1f4c9d10",
+    );
+  });
+  test("rejects non-canonical uppercase domain values", () => {
+    expect(decodeFails(Uuid, "0198A3FC-9DB1-7BD5-8A1E-2F6A1F4C9D10")).toBe(true);
+  });
+  test("rejects GUID-shaped values with invalid UUID version or variant", () => {
+    expect(decodeFails(UuidFromString, "0198a3fc-9db1-0bd5-8a1e-2f6a1f4c9d10")).toBe(true);
+    expect(decodeFails(UuidFromString, "0198a3fc-9db1-7bd5-7a1e-2f6a1f4c9d10")).toBe(true);
+  });
   test("rejects garbage", () => {
-    expect(decodeFails(Uuid, "nope")).toBe(true);
+    expect(decodeFails(UuidFromString, "nope")).toBe(true);
   });
 });
