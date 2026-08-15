@@ -41,15 +41,31 @@ dist-tag.
 
 ## Schemas
 
-Reusable Effect Schema building blocks, including Brazilian documents with
-check-digit validation and display-format encoding.
+Reusable Effect Schema building blocks with canonical storage values and
+separate presentation formatters.
 
 ```ts
 import { Schema } from "effect";
-import { CpfFromString, EndpointUrl, SlugFromString } from "@ayronforge/haversack/schema";
+import {
+  CpfFromString,
+  EmailAddressFromString,
+  EndpointUrl,
+  formatCpf,
+  PhoneNumberFromString,
+  SlugFromString,
+} from "@ayronforge/haversack/schema";
 
 const cpf = Schema.decodeUnknownSync(CpfFromString)("529.982.247-25");
-// "52998224725" — decodes to canonical digits, encodes back to "529.982.247-25"
+// "52998224725" — canonical digits in both decoded and encoded forms
+formatCpf(cpf); // "529.982.247-25"
+
+const phone = Schema.decodeUnknownSync(PhoneNumberFromString({ defaultCountry: "BR" }))(
+  "(11) 98765-4321",
+);
+// "+5511987654321" — canonical E.164
+
+const email = Schema.decodeUnknownSync(EmailAddressFromString())("User@Example.COM");
+// "User@example.com" — domain normalized, local part preserved by default
 
 const host = Schema.decodeUnknownSync(EndpointUrl)("https://api.example.com/");
 // "https://api.example.com" — normalized, rejects query strings and fragments
@@ -58,8 +74,10 @@ const slug = Schema.decodeUnknownSync(SlugFromString)("Café com Leite!");
 // "cafe-com-leite"
 ```
 
-`CepLookup` resolves addresses through ViaCEP as an Effect service with tagged
-errors. `Phone` parses international numbers via libphonenumber-js.
+`CepLookup.layerViaCep({ fetch })` resolves an already parsed `Cep` without
+capturing global I/O and distinguishes not-found, unavailable, and malformed
+responses. `PhoneNumberFromString` parses international or explicitly
+country-scoped national input through libphonenumber-js.
 
 ## Email
 

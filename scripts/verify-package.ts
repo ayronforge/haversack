@@ -6,7 +6,7 @@ const checks: Array<[path: string, exportName: string]> = [
   ["../dist/index.js", "normalizeError"],
   ["../dist/errors.js", "ProviderError"],
   ["../dist/schema.js", "EndpointUrl"],
-  ["../dist/schema.js", "Phone"],
+  ["../dist/schema.js", "PhoneNumberFromString"],
   ["../dist/schema.js", "CpfFromString"],
   ["../dist/utils.js", "sha256Hex"],
   ["../dist/email.js", "EmailService"],

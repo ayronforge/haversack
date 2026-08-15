@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect, Schema } from "effect";
 
-import { EmailAddress, EndpointUrl, NonEmptyTrimmedString, Uuid } from "./index.ts";
+import { EmailAddressFromString, EndpointUrl, NonEmptyTrimmedString, Uuid } from "./index.ts";
 
 const decode = <S extends Schema.Top>(schema: S, input: S["Encoded"]): S["Type"] =>
   Effect.runSync(Schema.decodeUnknownEffect(schema)(input) as Effect.Effect<S["Type"], unknown>);
@@ -41,11 +41,26 @@ describe("EndpointUrl", () => {
 });
 
 describe("EmailAddress", () => {
-  test("trims and lowercases", () => {
-    expect(decode(EmailAddress, "  User@Example.COM ")).toBe("user@example.com");
+  test("trims input, preserves the local part, and lowercases the domain", () => {
+    expect(decode(EmailAddressFromString(), "  User@Example.COM ")).toBe("User@example.com");
+  });
+  test("lowercases the local part only by explicit policy", () => {
+    expect(
+      decode(EmailAddressFromString({ lowercaseLocalPart: true }), "  User@Example.COM "),
+    ).toBe("user@example.com");
+  });
+  test("encodes the canonical address", () => {
+    const schema = EmailAddressFromString();
+    const email = decode(schema, "User@Example.COM");
+    expect(Effect.runSync(Schema.encodeEffect(schema)(email))).toBe("User@example.com");
   });
   test("rejects invalid", () => {
-    expect(decodeFails(EmailAddress, "not-an-email")).toBe(true);
+    const schema = EmailAddressFromString();
+    expect(decodeFails(schema, "not-an-email")).toBe(true);
+    expect(decodeFails(schema, ".user@example.com")).toBe(true);
+    expect(decodeFails(schema, "user..name@example.com")).toBe(true);
+    expect(decodeFails(schema, "user@localhost")).toBe(true);
+    expect(decodeFails(schema, "user@-example.com")).toBe(true);
   });
 });
 
