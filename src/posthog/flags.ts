@@ -1,4 +1,5 @@
 import { Context, Data, Effect, Layer, Redacted, Schema } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 
 import { PostHogConfig } from "./config.ts";
 
@@ -34,6 +35,8 @@ const asEvaluationError = (cause: unknown) =>
 
 /**
  * Server-side feature flag evaluation against PostHog's `/flags?v=2` endpoint.
+ * The transport is the `FetchHttpClient.Fetch` reference (defaults to
+ * `globalThis.fetch`).
  * Fail-open: evaluation errors log a warning and resolve to the fallback.
  */
 export class FeatureFlags extends Context.Service<
@@ -55,6 +58,7 @@ export class FeatureFlags extends Context.Service<
           const projectToken = config.projectToken;
           if (!projectToken) return flag.fallback;
 
+          const fetch = yield* FetchHttpClient.Fetch;
           const response = yield* Effect.tryPromise({
             try: () =>
               fetch(`${config.host}/flags?v=2`, {

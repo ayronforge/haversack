@@ -1,4 +1,5 @@
 import { Context, Data, Effect, Layer, Redacted } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 
 import { PostHogConfig } from "./config.ts";
 
@@ -14,7 +15,9 @@ class PostHogCaptureError extends Data.TaggedError("PostHogCaptureError")<{
 }> {}
 
 /**
- * Server-side event capture against PostHog's `/capture/` endpoint via fetch.
+ * Server-side event capture against PostHog's `/capture/` endpoint. The transport
+ * is the `FetchHttpClient.Fetch` reference (defaults to `globalThis.fetch`), so
+ * tests and hosts can inject their own fetch without touching globals.
  * Fail-open: delivery failures are logged, never raised, so tracking can never
  * break a request.
  */
@@ -34,6 +37,7 @@ export class PostHogAnalytics extends Context.Service<
           const projectToken = config.projectToken;
           if (!projectToken) return;
 
+          const fetch = yield* FetchHttpClient.Fetch;
           const response = yield* Effect.tryPromise({
             try: () =>
               fetch(`${config.host}/capture/`, {

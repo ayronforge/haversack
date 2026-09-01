@@ -118,7 +118,9 @@ const program = Effect.gen(function* () {
 
 Server-side capture and feature flags run over fetch without an SDK and work in
 Workers. Server delivery and evaluation are fail-open: failures log and fall
-back rather than break a request.
+back rather than break a request. The transport is Effect's
+`FetchHttpClient.Fetch` reference (defaults to `globalThis.fetch`); tests and
+hosts inject their own with `Effect.provideService(FetchHttpClient.Fetch, fn)`.
 
 ```ts
 import { Effect, Layer, Redacted } from "effect";
@@ -197,7 +199,8 @@ library never reads a global env.
   100-message batches.
 - `AnalyticsEngine` — the strict Analytics Engine SQL API with Schema-decoded
   rows. Non-successful responses remain typed query errors; the library does
-  not infer undocumented Cloudflare error semantics from response text.
+  not infer undocumented Cloudflare error semantics from response text. Requests go through the
+  `FetchHttpClient.Fetch` reference, so no global fetch is captured.
 - `makeR2BlobStorageLayer(bucket)` / `R2BlobPresignerLive` — the blob storage
   contract over R2 (see Contracts below).
 - `@ayronforge/haversack/cf/workflow` —
