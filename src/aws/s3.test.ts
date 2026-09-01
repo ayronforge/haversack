@@ -251,4 +251,33 @@ describe("S3 BlobPresigner", () => {
     expect(url.hostname).toBe("uploads.s3.us-east-1.amazonaws.com");
     expect(url.searchParams.get("X-Amz-Signature")).toBeTruthy();
   });
+
+  test("creates a SigV4 GET URL without network access", async () => {
+    let fetchCalls = 0;
+    const signed = await withFetch(
+      (async () => {
+        fetchCalls += 1;
+        return new Response(null);
+      }) as typeof fetch,
+      () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const presigner = yield* BlobPresigner;
+            return yield* presigner.presignGet({
+              key: "a.png",
+              expiresInSeconds: 600,
+            });
+          }).pipe(
+            Effect.provide(S3BlobPresignerLive),
+            Effect.provide(testConfig),
+          ) as Effect.Effect<string>,
+        ),
+    );
+
+    expect(fetchCalls).toBe(0);
+    const url = new URL(signed);
+    expect(url.hostname).toBe("uploads.s3.us-east-1.amazonaws.com");
+    expect(url.searchParams.get("X-Amz-SignedHeaders")).not.toContain("content-type");
+    expect(url.searchParams.get("X-Amz-Signature")).toBeTruthy();
+  });
 });

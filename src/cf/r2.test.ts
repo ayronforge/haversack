@@ -134,4 +134,34 @@ describe("R2 BlobPresigner", () => {
     expect(url.searchParams.get("X-Amz-SignedHeaders")).toContain("content-type");
     expect(url.searchParams.get("X-Amz-Signature")).toBeTruthy();
   });
+
+  test("creates a SigV4 GET URL that does not sign a content type", async () => {
+    const signed = await Effect.runPromise(
+      Effect.gen(function* () {
+        const presigner = yield* BlobPresigner;
+        return yield* presigner.presignGet({
+          key: "avatars/user one.png",
+          expiresInSeconds: 900,
+        });
+      }).pipe(
+        Effect.provide(R2BlobPresignerLive),
+        Effect.provide(
+          R2PresignerConfig.layer({
+            accessKeyId: "access_key",
+            secretAccessKey: Redacted.make("secret_key"),
+            endpoint: "https://objects.example.test/storage/",
+            bucket: "uploads",
+            region: "us-east-1",
+          }),
+        ),
+      ) as Effect.Effect<string>,
+    );
+
+    const url = new URL(signed);
+    expect(url.pathname).toBe("/storage/uploads/avatars/user%20one.png");
+    expect(url.searchParams.get("X-Amz-Algorithm")).toBe("AWS4-HMAC-SHA256");
+    expect(url.searchParams.get("X-Amz-Expires")).toBe("900");
+    expect(url.searchParams.get("X-Amz-SignedHeaders")).not.toContain("content-type");
+    expect(url.searchParams.get("X-Amz-Signature")).toBeTruthy();
+  });
 });

@@ -77,13 +77,19 @@ export type BlobPresignPutInput = {
   readonly expiresInSeconds: number;
 };
 
+export type BlobPresignGetInput = {
+  readonly key: string;
+  readonly expiresInSeconds: number;
+};
+
 /**
- * Presigned-URL port for direct client uploads. Separate from `BlobStorage`
+ * Presigned-URL port for direct client transfers. Separate from `BlobStorage`
  * because presigning needs credentials while data-plane bindings do not.
  */
 export class BlobPresigner extends Context.Service<
   BlobPresigner,
   {
+    readonly presignGet: (input: BlobPresignGetInput) => Effect.Effect<string, BlobPresignError>;
     readonly presignPut: (input: BlobPresignPutInput) => Effect.Effect<string, BlobPresignError>;
   }
 >()("@ayronforge/haversack/contracts/BlobPresigner") {}

@@ -5,6 +5,7 @@ import { Context, Effect, Layer, Option, Redacted } from "effect";
 import {
   BlobPresignError,
   BlobPresigner,
+  type BlobPresignGetInput,
   type BlobPresignPutInput,
   type BlobReadOptions,
   BlobStorage,
@@ -117,6 +118,24 @@ export const R2BlobPresignerLive: Layer.Layer<BlobPresigner, never, R2PresignerC
           : { sessionToken: Redacted.value(config.sessionToken) }),
       });
 
+      const presignGet = Effect.fn("BlobPresigner.presignGet")(function* (
+        input: BlobPresignGetInput,
+      ) {
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const url = objectUrl(config.endpoint, config.bucket, input.key);
+            url.searchParams.set("X-Amz-Expires", String(input.expiresInSeconds));
+
+            const request = new Request(url, { method: "GET" });
+            const signed = await client.sign(request, {
+              aws: { allHeaders: true, signQuery: true },
+            });
+            return signed.url;
+          },
+          catch: (cause) => new BlobPresignError({ key: input.key, cause }),
+        });
+      });
+
       const presignPut = Effect.fn("BlobPresigner.presignPut")(function* (
         input: BlobPresignPutInput,
       ) {
@@ -138,6 +157,6 @@ export const R2BlobPresignerLive: Layer.Layer<BlobPresigner, never, R2PresignerC
         });
       });
 
-      return BlobPresigner.of({ presignPut });
+      return BlobPresigner.of({ presignGet, presignPut });
     }),
   );
