@@ -1,4 +1,5 @@
 import { Context, Data, Effect, Layer, Redacted, Schema } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 
 const AnalyticsResponseSchema = Schema.Struct({
   data: Schema.optional(Schema.Unknown),
@@ -48,6 +49,7 @@ export class AnalyticsEngine extends Context.Service<
 
       const query = <A, E>(sql: string, rowSchema: Schema.Codec<A, E>) =>
         Effect.gen(function* () {
+          const fetch = yield* FetchHttpClient.Fetch;
           const response = yield* Effect.tryPromise({
             try: () =>
               fetch(endpoint, {

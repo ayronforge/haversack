@@ -1,25 +1,31 @@
 import { describe, expect, test } from "bun:test";
 
 import { Effect, Layer, Redacted } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 
 import { PostHogAnalytics } from "./capture.ts";
 import { PostHogConfig } from "./config.ts";
 import { FeatureFlags } from "./flags.ts";
 
-const withFetch = async <A>(fake: typeof fetch, run: () => Promise<A>): Promise<A> => {
-  const original = globalThis.fetch;
-  globalThis.fetch = fake;
-  try {
-    return await run();
-  } finally {
-    globalThis.fetch = original;
-  }
-};
-
 const configured = PostHogConfig.layer({
   host: "https://ph.test",
   projectToken: Redacted.make("phc_token"),
 });
+
+const track = (
+  fake: typeof fetch,
+  config: Layer.Layer<PostHogConfig> = configured,
+  input = { event: "x", distinctId: "y" },
+) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const analytics = yield* PostHogAnalytics;
+      yield* analytics.track(input);
+    }).pipe(
+      Effect.provide(PostHogAnalytics.layer.pipe(Layer.provide(config))),
+      Effect.provideService(FetchHttpClient.Fetch, fake),
+    ),
+  );
 
 describe("PostHogConfig", () => {
   test("defaults host and treats blank token as absent", async () => {
@@ -38,24 +44,13 @@ describe("PostHogConfig", () => {
 describe("PostHogAnalyticsLive", () => {
   test("delivers events to /capture/", async () => {
     const requests: Array<{ url: string; body: string }> = [];
-    await withFetch(
+    await track(
       (async (url: string | URL | Request, init?: RequestInit) => {
         requests.push({ url: String(url), body: String(init?.body) });
         return new Response("{}", { status: 200 });
       }) as typeof fetch,
-      () =>
-        Effect.runPromise(
-          Effect.gen(function* () {
-            const analytics = yield* PostHogAnalytics;
-            yield* analytics.track({
-              event: "signup",
-              distinctId: "user_1",
-              properties: { plan: "pro" },
-            });
-          }).pipe(
-            Effect.provide(PostHogAnalytics.layer.pipe(Layer.provide(configured))),
-          ) as Effect.Effect<void>,
-        ),
+      configured,
+      { event: "signup", distinctId: "user_1", properties: { plan: "pro" } },
     );
 
     expect(requests).toHaveLength(1);
@@ -66,34 +61,17 @@ describe("PostHogAnalyticsLive", () => {
   });
 
   test("never fails when delivery fails", async () => {
-    await withFetch((async () => new Response("nope", { status: 500 })) as typeof fetch, () =>
-      Effect.runPromise(
-        Effect.gen(function* () {
-          const analytics = yield* PostHogAnalytics;
-          yield* analytics.track({ event: "x", distinctId: "y" });
-        }).pipe(
-          Effect.provide(PostHogAnalytics.layer.pipe(Layer.provide(configured))),
-        ) as Effect.Effect<void>,
-      ),
-    );
+    await track((async () => new Response("nope", { status: 500 })) as typeof fetch);
   });
 
   test("skips delivery without a token", async () => {
     let called = false;
-    await withFetch(
+    await track(
       (async () => {
         called = true;
         return new Response("{}", { status: 200 });
       }) as typeof fetch,
-      () =>
-        Effect.runPromise(
-          Effect.gen(function* () {
-            const analytics = yield* PostHogAnalytics;
-            yield* analytics.track({ event: "x", distinctId: "y" });
-          }).pipe(
-            Effect.provide(PostHogAnalytics.layer.pipe(Layer.provide(PostHogConfig.layer()))),
-          ) as Effect.Effect<void>,
-        ),
+      PostHogConfig.layer(),
     );
     expect(called).toBe(false);
   });
@@ -103,14 +81,13 @@ describe("FeatureFlags", () => {
   const flag = { key: "new-checkout", fallback: false };
 
   const evaluate = (fake: typeof fetch) =>
-    withFetch(fake, () =>
-      Effect.runPromise(
-        Effect.gen(function* () {
-          const flags = yield* FeatureFlags;
-          return yield* flags.isEnabled(flag, { distinctId: "user_1" });
-        }).pipe(
-          Effect.provide(FeatureFlags.layer.pipe(Layer.provide(configured))),
-        ) as Effect.Effect<boolean>,
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const flags = yield* FeatureFlags;
+        return yield* flags.isEnabled(flag, { distinctId: "user_1" });
+      }).pipe(
+        Effect.provide(FeatureFlags.layer.pipe(Layer.provide(configured))),
+        Effect.provideService(FetchHttpClient.Fetch, fake),
       ),
     );
 
