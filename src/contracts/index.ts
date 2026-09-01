@@ -10,6 +10,7 @@ export type {
   BlobListOptions,
   BlobObject,
   BlobReadOptions,
+  BlobPresignGetInput,
   BlobPresignPutInput,
   BlobWriteOptions,
 } from "./blob-storage.ts";
