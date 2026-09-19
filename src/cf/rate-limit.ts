@@ -55,10 +55,14 @@ export interface RateLimiterRpc extends Rpc.DurableObjectBranded {
   fixedWindow(input: RateLimitFixedWindowInput): Promise<readonly [count: number, ttl: number]>;
 
   /**
-   * Returns the remaining token count after consumption. Without overflow, a
-   * negative result reports rejection but must not persist a negative balance.
+   * Returns the remaining token count after consumption and the milliseconds
+   * elapsed since the current refill interval started (`0` when the bucket was
+   * at capacity before consuming). Without overflow, a negative remaining count
+   * reports rejection but must not persist a negative balance.
    */
-  tokenBucket(input: RateLimitTokenBucketInput): Promise<number>;
+  tokenBucket(
+    input: RateLimitTokenBucketInput,
+  ): Promise<readonly [remaining: number, elapsedMillis: number]>;
 }
 
 /** Generic request rate limiter with fail-open backing-store semantics. */
@@ -134,14 +138,16 @@ function makeDurableObjectStoreLayer(
           return [count, ttl] as const;
         }),
       tokenBucket: (options) =>
-        callRateLimiter(namespace, options.key, (limiter) =>
-          limiter.tokenBucket({
+        callRateLimiter(namespace, options.key, async (limiter) => {
+          // The RPC boundary widens the tuple to `number[]`; restore its shape.
+          const [remaining = 0, elapsedMillis = 0] = await limiter.tokenBucket({
             allowOverflow: options.allowOverflow,
             limit: options.limit,
             refillRateMs: Duration.toMillis(options.refillRate),
             tokens: options.tokens,
-          }),
-        ),
+          });
+          return [remaining, elapsedMillis] as const;
+        }),
       adaptiveConsume: () => unsupportedAdaptiveOperation("adaptiveConsume"),
       adaptiveFeedback: () => unsupportedAdaptiveOperation("adaptiveFeedback"),
     }),

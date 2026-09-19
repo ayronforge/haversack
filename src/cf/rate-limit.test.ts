@@ -37,7 +37,7 @@ describe("RequestRateLimiter.layerDurableObject", () => {
           received.push({ key, refillRateMs: input.refillRateMs });
           return [3, 42_000] as const;
         },
-        tokenBucket: async () => 0,
+        tokenBucket: async () => [0, 0] as const,
       }),
     });
 
