@@ -37,7 +37,7 @@ export type PhoneNumber = typeof PhoneNumber.Type;
 export const PhoneNumberFromString = (options: PhoneNumberFromStringOptions = {}) =>
   Schema.String.pipe(
     Schema.decodeTo(PhoneNumber, {
-      decode: SchemaGetter.transformOrFail((input: string) => {
+      decode: SchemaGetter.transformEffect((input: string) => {
         const parsed = parseValidPhone(input, options.defaultCountry);
         if (!parsed) {
           return Effect.fail(

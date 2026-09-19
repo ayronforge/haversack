@@ -48,7 +48,7 @@ export type EndpointUrl = typeof EndpointUrl.Type;
 /** Parses URL input into a canonical {@link EndpointUrl}. */
 export const EndpointUrlFromString = Schema.String.pipe(
   Schema.decodeTo(EndpointUrl, {
-    decode: SchemaGetter.transformOrFail((input: string) => {
+    decode: SchemaGetter.transformEffect((input: string) => {
       const result = parseEndpointUrl(input);
       if (result._tag === "Success") return Effect.succeed(result.value);
       return Effect.fail(new SchemaIssue.InvalidValue({ message: result.message }, Option.none()));
