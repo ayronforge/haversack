@@ -4,7 +4,7 @@ import type {
   Workflow as CloudflareWorkflowBinding,
 } from "@cloudflare/workers-types";
 import { Data, Duration, Effect, Exit, Layer, Option, Schema } from "effect";
-import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow";
+import { Activity, Workflow, WorkflowEngine } from "effect/workflow";
 
 type WorkflowStep = CloudflareWorkersModule.WorkflowStep;
 type WorkflowStepConfig = CloudflareWorkersModule.WorkflowStepConfig;

@@ -1,5 +1,5 @@
 import { Context, Data, Effect, Layer, Redacted, Schema } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 const AnalyticsResponseSchema = Schema.Struct({
   data: Schema.optional(Schema.Unknown),

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { Effect, Option, Schema } from "effect";
-import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow";
+import { Activity, Workflow, WorkflowEngine } from "effect/workflow";
 
 import { testStub } from "../testing/test-stub.ts";
 import {

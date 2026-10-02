@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { Effect, Layer, Redacted, Schema } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import { AnalyticsEngine, AnalyticsEngineConfig } from "./analytics-engine.ts";
 

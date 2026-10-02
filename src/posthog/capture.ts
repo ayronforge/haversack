@@ -1,5 +1,5 @@
 import { Context, Data, Effect, Layer, Redacted } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import { PostHogConfig } from "./config.ts";
 

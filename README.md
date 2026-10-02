@@ -19,11 +19,10 @@ and heavy SDKs (Stripe, Resend, posthog-js, ...) are optional peer
 dependencies: if you never import `/stripe`, you never install Stripe.
 
 ```bash
-bun add @ayronforge/haversack effect@rc
+bun add @ayronforge/haversack effect
 ```
 
-Haversack is built on the Effect 4 release candidate, published under the `rc`
-dist-tag.
+Haversack is built on Effect 4 (`effect@^4.0.0`).
 
 ## What's inside
 
@@ -189,7 +188,7 @@ Workers primitives, all binding-oriented — you pass bindings explicitly, the
 library never reads a global env.
 
 - `RequestRateLimiter` — fixed-window and token-bucket over
-  `effect/unstable/persistence`, with `layerMemory` for tests and
+  `effect/persistence`, with `layerMemory` for tests and
   `layerDurableObject(namespace)` for cross-isolate limits. The namespace points
   to a caller-owned Durable Object implementing `RateLimiterRpc`; the application
   owns persistence, migrations and cleanup. Fail-open on store failures.
@@ -205,7 +204,7 @@ library never reads a global env.
   contract over R2 (see Contracts below).
 - `@ayronforge/haversack/cf/workflow` —
   `makeCloudflareWorkflowEngineLayer({ workflow, step })` adapts
-  `effect/unstable/workflow` to Cloudflare Workflows: activities map to
+  `effect/workflow` to Cloudflare Workflows: activities map to
   `step.do` with retries, durable deferreds to `sendEvent`/`waitForEvent`,
   durable clocks to `step.sleep`.
 
