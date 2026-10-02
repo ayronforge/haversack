@@ -1,6 +1,6 @@
 import type { DurableObjectNamespace, Rpc } from "@cloudflare/workers-types";
 import { Context, Data, Duration, Effect, Layer } from "effect";
-import { RateLimiter as EffectRateLimiter } from "effect/unstable/persistence";
+import { RateLimiter as EffectRateLimiter } from "effect/persistence";
 
 /** Caller-owned rate-limit policy. */
 export type RateLimitPolicy = {
@@ -43,7 +43,7 @@ export class RequestRateLimitExceeded extends Data.TaggedError("RequestRateLimit
  * {@link RequestRateLimiter}.
  *
  * The methods mirror the fixed-window and token-bucket store semantics from
- * `effect/unstable/persistence`. Implementations own persistence, migrations,
+ * `effect/persistence`. Implementations own persistence, migrations,
  * cleanup, and concurrency control.
  */
 export interface RateLimiterRpc extends Rpc.DurableObjectBranded {

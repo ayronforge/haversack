@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { Effect, Layer, Redacted } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import { PostHogAnalytics } from "./capture.ts";
 import { PostHogConfig } from "./config.ts";
