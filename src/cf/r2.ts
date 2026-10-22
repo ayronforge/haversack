@@ -15,6 +15,7 @@ import {
   type BlobWriteOptions,
 } from "../contracts/blob-storage.ts";
 import { materializeBlobBody } from "../internal/materialize-blob-body.ts";
+import { presignPutRequest } from "../internal/presign-put.ts";
 import { objectUrl } from "../utils/url.ts";
 
 /**
@@ -141,13 +142,10 @@ export const R2BlobPresignerLive: Layer.Layer<BlobPresigner, never, R2PresignerC
       ) {
         return yield* Effect.tryPromise({
           try: async () => {
-            const url = objectUrl(config.endpoint, config.bucket, input.key);
-            url.searchParams.set("X-Amz-Expires", String(input.expiresInSeconds));
-
-            const request = new Request(url, {
-              headers: { "Content-Type": input.contentType },
-              method: "PUT",
-            });
+            const request = presignPutRequest(
+              objectUrl(config.endpoint, config.bucket, input.key),
+              input,
+            );
             const signed = await client.sign(request, {
               aws: { allHeaders: true, signQuery: true },
             });

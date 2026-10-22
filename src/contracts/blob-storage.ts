@@ -75,6 +75,11 @@ export type BlobPresignPutInput = {
   readonly key: string;
   readonly contentType: string;
   readonly expiresInSeconds: number;
+  /**
+   * Exact body size in bytes. When set it becomes a signed header, so the
+   * storage rejects an upload with any other `Content-Length`.
+   */
+  readonly contentLength?: number | undefined;
 };
 
 export type BlobPresignGetInput = {

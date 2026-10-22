@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { R2Bucket } from "@cloudflare/workers-types";
-import { Effect, Option, Redacted } from "effect";
+import { Effect, Option, Redacted, Result } from "effect";
 
 import { BlobPresigner, BlobReadLimitExceeded, BlobStorage } from "../contracts/blob-storage.ts";
 import { testStub } from "../testing/test-stub.ts";
@@ -133,6 +133,54 @@ describe("R2 BlobPresigner", () => {
     expect(url.searchParams.get("X-Amz-Expires")).toBe("900");
     expect(url.searchParams.get("X-Amz-SignedHeaders")).toContain("content-type");
     expect(url.searchParams.get("X-Amz-Signature")).toBeTruthy();
+  });
+
+  const presignPut = (contentLength: number | undefined) =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const presigner = yield* BlobPresigner;
+        return yield* presigner.presignPut({
+          key: "avatars/a.png",
+          contentType: "image/png",
+          expiresInSeconds: 900,
+          contentLength,
+        });
+      }).pipe(
+        Effect.provide(R2BlobPresignerLive),
+        Effect.provide(
+          R2PresignerConfig.layer({
+            accessKeyId: "access_key",
+            secretAccessKey: Redacted.make("secret_key"),
+            endpoint: "https://objects.example.test/storage/",
+            bucket: "uploads",
+            region: "us-east-1",
+          }),
+        ),
+        Effect.result,
+      ),
+    );
+
+  test("signs the content length when one is given", async () => {
+    const withLength = await presignPut(1234);
+    const withoutLength = await presignPut(undefined);
+
+    expect(Result.isSuccess(withLength) && Result.isSuccess(withoutLength)).toBe(true);
+
+    if (Result.isSuccess(withLength) && Result.isSuccess(withoutLength)) {
+      const signedHeaders = (signed: string) =>
+        new URL(signed).searchParams.get("X-Amz-SignedHeaders")?.split(";");
+
+      expect(signedHeaders(withLength.success)).toEqual(["content-length", "content-type", "host"]);
+      expect(signedHeaders(withoutLength.success)).toEqual(["content-type", "host"]);
+    }
+  });
+
+  test("rejects a content length that is not a non-negative integer", async () => {
+    for (const contentLength of [-1, 1.5, Number.NaN]) {
+      const result = await presignPut(contentLength);
+
+      expect(Result.isFailure(result) && result.failure._tag).toBe("BlobPresignError");
+    }
   });
 
   test("creates a SigV4 GET URL that does not sign a content type", async () => {
