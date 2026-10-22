@@ -230,6 +230,20 @@ const program = Effect.gen(function* () {
 // Elsewhere:    Effect.provide(program, S3BlobStorageLive) + S3Config.layer({ ... })
 ```
 
+`BlobPresigner.presignPut` signs the `Content-Type` and, when you pass
+`contentLength`, the exact body size too. Browsers send `Content-Length`
+automatically, so an upload whose body is any other size is rejected by the
+storage before it is written:
+
+```ts
+const url = yield* presigner.presignPut({
+  key: "uploads/avatar.png",
+  contentType: "image/png",
+  contentLength: file.size,
+  expiresInSeconds: 600,
+});
+```
+
 ## Testing
 
 - `runWithService(tag, layer)` — a Promise-based runner for exercising one

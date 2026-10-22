@@ -252,6 +252,29 @@ describe("S3 BlobPresigner", () => {
     expect(url.searchParams.get("X-Amz-Signature")).toBeTruthy();
   });
 
+  test("signs the content length when one is given", async () => {
+    const signed = await Effect.runPromise(
+      Effect.gen(function* () {
+        const presigner = yield* BlobPresigner;
+        return yield* presigner.presignPut({
+          key: "a.png",
+          contentType: "image/png",
+          expiresInSeconds: 600,
+          contentLength: 2048,
+        });
+      }).pipe(
+        Effect.provide(S3BlobPresignerLive),
+        Effect.provide(testConfig),
+      ) as Effect.Effect<string>,
+    );
+
+    expect(new URL(signed).searchParams.get("X-Amz-SignedHeaders")?.split(";")).toEqual([
+      "content-length",
+      "content-type",
+      "host",
+    ]);
+  });
+
   test("creates a SigV4 GET URL without network access", async () => {
     let fetchCalls = 0;
     const signed = await withFetch(

@@ -14,6 +14,7 @@ import {
   type BlobWriteOptions,
 } from "../contracts/blob-storage.ts";
 import { materializeBlobBody } from "../internal/materialize-blob-body.ts";
+import { presignPutRequest } from "../internal/presign-put.ts";
 import { encodeObjectKey } from "../utils/url.ts";
 
 /** Credentials and target bucket for the S3 REST API. */
@@ -204,12 +205,7 @@ export const S3BlobPresignerLive: Layer.Layer<BlobPresigner, never, S3Config> = 
     ) {
       return yield* Effect.tryPromise({
         try: async () => {
-          const url = s3.objectUrl(input.key);
-          url.searchParams.set("X-Amz-Expires", String(input.expiresInSeconds));
-          const request = new Request(url, {
-            headers: { "Content-Type": input.contentType },
-            method: "PUT",
-          });
+          const request = presignPutRequest(s3.objectUrl(input.key), input);
           const signed = await s3.client.sign(request, {
             aws: { allHeaders: true, signQuery: true },
           });
